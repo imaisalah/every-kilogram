@@ -206,6 +206,9 @@
           }
       };
       function show(ctx) {
+        if (SMD.music && typeof SMD.music.setMission === 'function') {
+          SMD.music.setMission(ctx.view && ctx.view.scenarioId, ctx.view && ctx.view.phase);
+        }
         const phase = ctx.view && ctx.view.phase;
         if (!phase || phase === phaseShown) return;
         phaseShown = phase;
@@ -277,6 +280,7 @@
       } else begin(params);
       return () => {
         gone = true;
+        if (SMD.music && typeof SMD.music.setMission === 'function') SMD.music.setMission(null);
         if (offChange) offChange();
         unmount();
         if (chrome) chrome.destroy();

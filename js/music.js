@@ -1,9 +1,13 @@
-// Background music player – plays your custom track: assets/Music/Background_music.mp3
+// Background music player. Mars missions use a dedicated field recording;
+// other screens and missions keep assets/Music/Background_music.mp3.
 // Follows SMD.settings.sound and browser autoplay policies.
 (function () {
   const SMD = (globalThis.SMD = globalThis.SMD || {});
 
-  const TRACK_PATH = 'assets/Music/Background_music.mp3';
+  const DEFAULT_TRACK_PATH = 'assets/Music/Background_music.mp3';
+  const MARS_TRACK_PATH = 'assets/Music/Mars_Mission.mp3';
+  let trackPath = DEFAULT_TRACK_PATH;
+  let marsLanded = false;
   let audioEl = null;
   let playing = false;
   let defaultVolume = 0.55;
@@ -24,7 +28,7 @@
 
   function getAudioElement() {
     if (!audioEl) {
-      audioEl = new Audio(TRACK_PATH);
+      audioEl = new Audio(trackPath);
       audioEl.loop = true;
       audioEl.preload = 'auto';
       audioEl.volume = isMuted() ? 0 : defaultVolume;
@@ -77,6 +81,21 @@
     }
   }
 
+  function setMission(scenarioId, phase) {
+    if (scenarioId === 'mars' && phase === 'surface') marsLanded = true;
+    else if (scenarioId !== 'mars') marsLanded = false;
+    const nextTrack = marsLanded && scenarioId === 'mars' ? MARS_TRACK_PATH : DEFAULT_TRACK_PATH;
+    if (nextTrack === trackPath) return;
+    trackPath = nextTrack;
+    if (!audioEl) return;
+    const resume = !audioEl.paused && !audioEl.ended;
+    audioEl.pause();
+    playing = false;
+    audioEl.src = trackPath;
+    audioEl.load();
+    if (resume && !isMuted()) play();
+  }
+
   // Sync with game settings / mute toggle
   if (SMD.bus) {
     SMD.bus.on('settings', (e) => {
@@ -113,6 +132,7 @@
     pause,
     stop,
     setVolume,
+    setMission,
     isPlaying: () => playing,
     getElement: () => audioEl,
   };

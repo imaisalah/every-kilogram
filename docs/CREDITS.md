@@ -51,6 +51,12 @@ Notes:
 - Ares I: the game removes four loose cones that sit about 90 m from the rocket in the source file.
 - The `realM` sizes in the manifest are approximate largest dimensions, used only to draw the models at roughly true scale.
 
+## Audio (`assets/Music/`)
+
+| File | Description | Credit | Usage/source |
+|---|---|---|---|
+| `Mars_Mission.mp3` | 20-second mono MP3 (48 kHz) converted from the supplied `scam-mic-sol001-run001.wav`; used as a looping Mars-mission background sound | NASA/JPL-Caltech/LANL/CNES/CNRS/ISAE-Supaero | NASA Science, [First Audio Recording of Sounds on Mars](https://science.nasa.gov/resource/first-audio-recording-of-sounds-on-mars/). NASA media usage guidelines; use does not imply NASA endorsement. |
+
 ## Characters (`assets/models/characters/`)
 
 The Last Light and career characters are built from two free Quaternius packs, both **CC0** (public domain dedication; no attribution required, credited here anyway). The pack pages and the Quaternius FAQ state the licence: "All models are under the CC0 License."

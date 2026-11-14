@@ -1,5 +1,5 @@
-// Asset ids -> files, sizes and credits. Every file here is NASA or USGS
-// public domain (see docs/CREDITS.md and docs/research/nasa-3d-and-textures.md).
+// Asset ids -> files, sizes and credits. See docs/CREDITS.md and
+// docs/research/nasa-3d-and-textures.md for sources and usage notes.
 // Paths are relative to the game root; the loader resolves them from its own URL.
 //
 // Texture fields: file, lo (optional smaller variant for phones and distant
@@ -22,6 +22,7 @@ const C = {
   europa: 'NASA / JPL Voyager and Galileo; USGS Astrogeology (T. Becker), Europa global mosaic',
   nasa3d: 'NASA 3D Resources (github.com/nasa/NASA-3D-Resources)',
   clipper: 'NASA / JPL-Caltech, Europa Clipper spacecraft model',
+  marsAudio: 'NASA/JPL-Caltech/LANL/CNES/CNRS/ISAE-Supaero',
 };
 
 const SRC = {
@@ -35,6 +36,7 @@ const SRC = {
   cassini: 'https://science.nasa.gov/photojournal/cassinis-best-maps-of-jupiter-cylindrical-map/',
   europa: 'https://astrogeology.usgs.gov/search/map/europa_voyager_galileo_ssi_global_mosaic_500m',
   clipper: 'https://science.nasa.gov/mission/europa-clipper/',
+  marsAudio: 'https://science.nasa.gov/resource/first-audio-recording-of-sounds-on-mars/',
 };
 
 const tex = (file, px, kb, credit, source, more = {}) => ({ file: 'assets/textures/' + file, px, kb, srgb: true, credit, source, licence: 'Public domain', ...more });
@@ -71,6 +73,16 @@ export const MODELS = {
   'model-dsn34': mdl('DSN34.glb', 2835, 36.8, 'Deep Space Network 34 m antenna'),
 };
 
+export const AUDIO = {
+  'mars-sound': {
+    file: 'assets/Music/Mars_Mission.mp3',
+    title: 'First audio recording of sounds on Mars',
+    credit: C.marsAudio,
+    source: SRC.marsAudio,
+    licence: 'NASA media usage guidelines',
+  },
+};
+
 // Other names that callers have used for the same maps.
 export const ALIASES = { earth: 'earth-day', clouds: 'earth-clouds', venus: 'venus-radar', earthDay: 'earth-day', venusRadar: 'venus-radar', marsColor: 'mars', moonColor: 'moon' };
 
@@ -80,4 +92,5 @@ export const ENDORSEMENT = 'Imagery and models courtesy of NASA, NASA/JPL-Caltec
 export const CREDITS = [
   ...Object.entries(TEXTURES).map(([id, t]) => ({ id, kind: 'texture', title: t.title, credit: t.credit, licence: t.licence, source: t.source, file: t.file })),
   ...Object.entries(MODELS).map(([id, m]) => ({ id, kind: 'model', title: m.title, credit: m.credit, licence: m.licence, source: m.source, file: m.file })),
+  ...Object.entries(AUDIO).map(([id, a]) => ({ id, kind: 'audio', title: a.title, credit: a.credit, licence: a.licence, source: a.source, file: a.file })),
 ];

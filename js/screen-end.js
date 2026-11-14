@@ -234,7 +234,7 @@
               <p>${esc(t('end.credits.made', 'Every Kilogram was made for the NASA Space Apps Challenge 2026: Space Mission Design Game.'))}</p>
               <p>${esc((SMD.assets && SMD.assets.endorsement) || t('end.credits.nasa', 'Imagery and models courtesy of NASA, NASA/JPL-Caltech, NASA Earth Observatory, NASA SVS, NASA Trek, USGS Astrogeology. Use does not imply NASA endorsement.'))}</p>
               <p>${esc(t('end.credits.data', 'Planet positions from JPL approximate orbital elements. Mission numbers from NASA fact sheets and the NASA Lessons Learned Information System.'))}</p>
-              ${credits.length ? `<details><summary>${esc(t('end.credits.all', 'All image and model credits ({n})', { n: credits.length }))}</summary><ul>${credits.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>` : ''}
+              ${credits.length ? `<details><summary>${esc(t('end.credits.all', 'All asset credits ({n})', { n: credits.length }))}</summary><ul>${credits.map((c) => `<li>${esc(c)}</li>`).join('')}</ul></details>` : ''}
             </div>
           </section>
 
