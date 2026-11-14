@@ -1,0 +1,49 @@
+1
+00:00:00,000 --> 00:00:01,600
+Who we are: [Team name]
+
+2
+00:00:01,600 --> 00:00:03,600
+NASA Space Apps Challenge 2026: Space Mission Design Game.
+A space mission is a chain of trade-offs. We made a game where you live them.
+
+3
+00:00:03,600 --> 00:00:05,400
+Every Kilogram: design a spacecraft, fly it, bring back the science.
+
+4
+00:00:05,400 --> 00:00:09,000
+Pick your astronaut and a real destination. KILO, your guide, explains the mission.
+
+5
+00:00:09,000 --> 00:00:12,600
+Build it one part at a time, with numbers from real NASA missions.
+
+6
+00:00:12,600 --> 00:00:13,800
+Then decide what counts as success.
+
+7
+00:00:13,800 --> 00:00:15,400
+Meet your crew, then launch.
+
+8
+00:00:15,400 --> 00:00:18,600
+The flight is simulated: sunlight, battery, data and radio passes.
+
+9
+00:00:18,600 --> 00:00:21,800
+Land, explore, and scan with the instruments you packed.
+
+10
+00:00:21,800 --> 00:00:23,400
+Too heavy to get home? Throw science overboard.
+
+11
+00:00:23,400 --> 00:00:26,600
+Then see why it worked, change one thing, and fly again.
+
+12
+00:00:26,600 --> 00:00:30,000
+Every Kilogram. Play free in the browser: [link]
+Next: classroom trials with teachers.

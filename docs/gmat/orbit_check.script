@@ -1,0 +1,56 @@
+%  Every Kilogram: period of three circular Earth orbits, for comparison with docs/VALIDATION.md.
+%  Untested template (see docs/gmat/README.md).
+
+Create Spacecraft Landsat;
+GMAT Landsat.DateFormat = UTCGregorian;
+GMAT Landsat.Epoch = '14 Nov 2026 12:00:00.000';
+GMAT Landsat.CoordinateSystem = EarthMJ2000Eq;
+GMAT Landsat.DisplayStateType = Keplerian;
+GMAT Landsat.SMA = 7083.137;
+GMAT Landsat.ECC = 0.0001;
+GMAT Landsat.INC = 98.2;
+GMAT Landsat.RAAN = 0;
+GMAT Landsat.AOP = 0;
+GMAT Landsat.TA = 0;
+
+Create Spacecraft Station;
+GMAT Station.DateFormat = UTCGregorian;
+GMAT Station.Epoch = '14 Nov 2026 12:00:00.000';
+GMAT Station.CoordinateSystem = EarthMJ2000Eq;
+GMAT Station.DisplayStateType = Keplerian;
+GMAT Station.SMA = 6788.137;
+GMAT Station.ECC = 0.0001;
+GMAT Station.INC = 51.6;
+GMAT Station.RAAN = 0;
+GMAT Station.AOP = 0;
+GMAT Station.TA = 0;
+
+Create Spacecraft SunSync600;
+GMAT SunSync600.DateFormat = UTCGregorian;
+GMAT SunSync600.Epoch = '14 Nov 2026 12:00:00.000';
+GMAT SunSync600.CoordinateSystem = EarthMJ2000Eq;
+GMAT SunSync600.DisplayStateType = Keplerian;
+GMAT SunSync600.SMA = 6978.137;
+GMAT SunSync600.ECC = 0.0001;
+GMAT SunSync600.INC = 97.8;
+GMAT SunSync600.RAAN = 0;
+GMAT SunSync600.AOP = 0;
+GMAT SunSync600.TA = 0;
+
+% Two-body gravity only, so the result matches the simple maths the game uses.
+Create ForceModel TwoBody;
+GMAT TwoBody.CentralBody = Earth;
+GMAT TwoBody.PointMasses = {Earth};
+
+Create Propagator Prop;
+GMAT Prop.FM = TwoBody;
+GMAT Prop.Type = RungeKutta89;
+GMAT Prop.InitialStepSize = 60;
+GMAT Prop.Accuracy = 9.999999999999999e-12;
+
+Create ReportFile Periods;
+GMAT Periods.Filename = 'every_kilogram_periods.txt';
+
+BeginMissionSequence;
+
+Report Periods Landsat.Earth.OrbitPeriod Station.Earth.OrbitPeriod SunSync600.Earth.OrbitPeriod;
