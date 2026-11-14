@@ -354,7 +354,7 @@
       const next = JSON.stringify([score, agendas]);
       if (next === sig) return;
       sig = next;
-      box.innerHTML = `${score != null ? `<b class="tp-count">${esc(K.fmt(score))}</b><p class="tp-kicker">${esc(t('team.debrief.score', 'out of 1000'))}</p>` : ''}
+      box.innerHTML = `${score != null ? `<b class="tp-count">${esc(K.fmt(score))}</b><p class="tp-kicker">${esc(t('team.debrief.score', 'out of 1000'))}</p>` : ''}${d.score && d.score.outcome && d.score.outcome.title ? `<p class="tp-kicker">${esc(d.score.outcome.title)}</p>` : ''}
         <h1>${esc(t('team.phone.look', 'Look at the big screen'))}</h1>
         ${agendas.map((a) => `<div class="tp-agenda-res ${a.met ? 'ok' : 'no'}"><b>${esc(t('team.phone.secret', 'Your secret goal'))}</b><span>${esc((a.agenda && a.agenda.title) || '')}</span><strong>${esc(a.met ? t('team.debrief.met', 'Done') : t('team.debrief.missed', 'Missed'))}</strong></div>`).join('')}`;
     }
@@ -373,7 +373,7 @@
       return { update: () => out.update && out.update(ctx), destroy: cleanup };
     };
   }
-  const PHASES = { debrief: mountDebrief, lobby: shared('lobby'), brief: shared('brief'), design: shared('design'), questions: shared('questions'), lock: shared('lock'), cabin: shared('cabin'), flight: mountFlight, landing: mountLanding, surface: mountController, ascent: mountAscent };
+  const PHASES = { debrief: mountDebrief, lobby: shared('lobby'), brief: shared('brief'), design: shared('design'), questions: shared('questions'), define: shared('define'), lock: shared('lock'), cabin: shared('cabin'), flight: mountFlight, landing: mountLanding, surface: mountController, ascent: mountAscent };
 
   // One phase of the player screen, for the team screen on a laptop.
   team.clientPhase = function clientPhase(phase, el, ctx) {

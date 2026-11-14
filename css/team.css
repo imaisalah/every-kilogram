@@ -1365,6 +1365,412 @@
     transition: none;
   }
 }
+/* ---------- v3 (docs/TEAM-V3.md "As built (v3: build)") ---------- */
+/* Difficulty: concept maturity */
+.ts-cml {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-block-start: 4px;
+  color: var(--calm-text);
+  font-size: 0.95rem;
+}
+.ts-cml em,
+.ts-cmlchip b {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--calm-raise);
+  border: 1px solid var(--calm-line);
+  color: var(--calm-accent-hi);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.ts-cml-what {
+  color: var(--calm-dim);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+.ts-cml-note {
+  margin: 16px 0 0;
+  color: var(--calm-dim);
+  font-size: 0.9rem;
+}
+.ts-guidepick:empty {
+  display: none;
+}
+.ts-guidepick {
+  margin-block-start: 22px;
+}
+/* Crew: the fifth card (your own astronaut) */
+.ts-crewpick:has(.ts-person-new),
+.ts-crewpick:has(.ts-person-own) {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.ts-person-plus {
+  display: grid;
+  place-items: center;
+  color: var(--calm-dim);
+}
+.ts-person-new b {
+  color: var(--calm-accent-hi);
+}
+.ts-person .ts-link {
+  font-size: 0.85rem;
+  color: var(--calm-accent);
+  text-decoration: underline;
+}
+.ts-crew-job {
+  margin: 18px 0 0;
+  color: var(--calm-dim);
+  min-block-size: 1.4em;
+}
+/* Build header: segment, CML, requirements served */
+.ts-step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: -8px 0 16px;
+  color: var(--calm-dim);
+  font-size: 0.88rem;
+}
+.ts-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--calm-line);
+  color: var(--calm-text);
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.ts-seg i {
+  display: inline-flex;
+  inline-size: 15px;
+  block-size: 15px;
+  color: var(--calm-accent);
+}
+.ts-seg svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+.ts-cmlchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ts-serves b {
+  color: var(--calm-text);
+  font-weight: 600;
+}
+.ts-serves span {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--calm-raise);
+  color: var(--calm-accent-hi);
+  font-weight: 700;
+}
+.ts-serves small {
+  margin-inline-start: 4px;
+  font-size: 0.86rem;
+}
+/* Solo: the crewmate who owns this step */
+.ts-owner.crew {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--calm-panel);
+  max-inline-size: 760px;
+}
+.ts-owner-face {
+  flex: none;
+  inline-size: 44px;
+  block-size: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.ts-owner-face svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+.ts-owner-txt p {
+  margin: 0;
+}
+.ts-owner-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--calm-dim);
+  font-size: 0.9rem;
+}
+.ts-crew-line {
+  margin-block: 4px !important;
+  color: var(--calm-text);
+  font-size: 1.02rem;
+}
+.ts-crew-reply {
+  margin-block: 6px !important;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--calm-raise);
+  font-size: 0.95rem;
+}
+.ts-crew-reply.ok b {
+  color: var(--calm-good);
+}
+.ts-crew-reply.no b {
+  color: var(--calm-warn);
+}
+.ts-owner-hint {
+  color: var(--calm-dim);
+  font-size: 0.85rem;
+}
+.ts-stepbar button.crew {
+  opacity: 0.72;
+}
+.ts-stepbar button.mine span {
+  text-decoration: underline;
+  text-decoration-color: var(--calm-accent);
+  text-underline-offset: 4px;
+}
+/* Cards: locked, specs (CML 3), point-design detail (CML 4) */
+.ts-card.locked {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.ts-card.locked:hover {
+  border-color: transparent;
+}
+.ts-card-tag.lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--calm-raise);
+  color: var(--calm-dim);
+}
+.ts-card-lock {
+  color: var(--calm-warn);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+.ts-card-specs,
+.ts-card-detail {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-block-start: 10px;
+  border-block-start: 1px solid var(--calm-line);
+  font-size: 0.86rem;
+}
+.ts-card-specs {
+  margin-block-start: auto;
+}
+.ts-card-specs div,
+.ts-card-detail div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ts-card-specs dt,
+.ts-card-detail dt {
+  color: var(--calm-dim);
+  flex: none;
+}
+.ts-card-specs dd,
+.ts-card-detail dd {
+  margin: 0;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.ts-card-detail {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 0.8rem;
+}
+.ts-card-detail div[data-status='ok'] dd {
+  color: var(--calm-good);
+}
+.ts-card-detail div[data-status='warn'] dd {
+  color: var(--calm-warn);
+}
+.ts-card-detail div[data-status='bad'] dd {
+  color: var(--calm-bad);
+}
+/* Mission definition: the traceability chain */
+.ts-trace {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ts-trace-row {
+  display: grid;
+  grid-template-columns: 34px 210px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: var(--calm-panel);
+}
+.ts-trace-n {
+  display: grid;
+  place-items: center;
+  inline-size: 30px;
+  block-size: 30px;
+  border-radius: 50%;
+  background: var(--calm-raise);
+  color: var(--calm-accent-hi);
+  font-weight: 700;
+}
+.ts-trace-k {
+  padding-block-start: 4px;
+  color: var(--calm-dim);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.ts-trace-v p {
+  margin: 0;
+}
+.ts-trace-sub {
+  margin-block-start: 4px !important;
+  color: var(--calm-dim);
+  font-size: 0.95rem;
+}
+.ts-trace-objs,
+.ts-trace-list,
+.ts-trace-mrs {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ts-trace-objs li {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+.ts-trace-objs small,
+.ts-trace-list small,
+.ts-trace-mrs small {
+  color: var(--calm-dim);
+  font-size: 0.84rem;
+}
+.ts-trace-objs em {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--calm-accent);
+  color: var(--calm-accent-ink);
+  font-style: normal;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.ts-trace-objs li:not(.top) b {
+  font-weight: 500;
+}
+.ts-trace-w {
+  display: block;
+  block-size: 6px;
+  border-radius: 6px;
+  background: var(--calm-line);
+  overflow: hidden;
+}
+.ts-trace-w i {
+  display: block;
+  block-size: 100%;
+  background: var(--calm-accent);
+}
+.ts-trace-list li,
+.ts-trace-mrs li {
+  display: grid;
+  gap: 2px;
+}
+.ts-trace-mrs li {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+.ts-trace-mrs li small {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.ts-trace-mrs b {
+  color: var(--calm-accent-hi);
+}
+/* Review: verification */
+.ts-verify-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 14px 0 8px;
+  font-size: 1.1rem;
+}
+.ts-verify-h small {
+  color: var(--calm-dim);
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+.ts-verify {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.ts-verify li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+.ts-verify li > i {
+  font-style: normal;
+  font-weight: 700;
+}
+.ts-verify li.ok > i {
+  color: var(--calm-good);
+}
+.ts-verify li.no > i {
+  color: var(--calm-bad);
+}
+.ts-verify p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.3;
+}
+.ts-verify b {
+  color: var(--calm-accent-hi);
+}
+.ts-verify small {
+  color: var(--calm-dim);
+  font-size: 0.82rem;
+}
+@media (max-width: 900px) {
+  .ts-crewpick:has(.ts-person-new),
+  .ts-crewpick:has(.ts-person-own) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ts-trace-row {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+  .ts-trace-v {
+    grid-column: 1 / -1;
+  }
+  .ts-trace-objs li {
+    grid-template-columns: 50px minmax(0, 1fr);
+  }
+}
 /* ts:end */
 
 /* tf:start (flight, cabin, debrief, KILO, crew portraits: view-flight.js, view-debrief.js, guide.js, crew.js) */
@@ -3767,6 +4173,151 @@
     animation: none;
   }
 }
+
+/* ---------- v3: the guide's name in the bubble, the guide picker, View in VR ---------- */
+.tf-kilo-who {
+  margin: 0 0 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6488;
+}
+.tf-kilo[data-guide='brace'] {
+  --kilo-glow: #ffb24d;
+}
+.tf-kilo[data-guide='praline'] {
+  --kilo-glow: #e8a93a;
+}
+.tf-kilo[data-guide='cairn'] {
+  --kilo-glow: #7fe8d8;
+}
+.tf-guides {
+  display: grid;
+  gap: 14px;
+}
+.tf-guides-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.tf-guide-card {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  padding: 14px 12px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--calm-line, rgba(214, 224, 255, 0.13));
+  background: var(--calm-panel, #141c42);
+  color: var(--calm-text, #eef1fb);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.tf-guide-card:hover {
+  border-color: var(--calm-dim, #a6b0d4);
+}
+.tf-guide-card.on {
+  border-color: var(--calm-accent, #93b4ff);
+  background: var(--calm-raise, #1b2552);
+  box-shadow: inset 0 0 0 1px var(--calm-accent, #93b4ff);
+}
+.tf-guide-card:focus-visible {
+  outline: 3px solid var(--calm-accent, #93b4ff);
+  outline-offset: 3px;
+}
+.tf-guide-face {
+  line-height: 0;
+}
+.tf-guide-face .tf-kilo-svg {
+  animation: none;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+}
+.tf-guide-name {
+  font-size: 1.08rem;
+}
+.tf-guide-role {
+  font-size: 0.85rem;
+  color: var(--calm-dim, #a6b0d4);
+}
+.tf-guide-blurb {
+  font-size: 0.92rem;
+  line-height: 1.35;
+  color: var(--calm-text, #eef1fb);
+  opacity: 0.85;
+}
+.tf-guide-hello {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: #f4f6fb;
+  color: #1a2040;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.tf-guide-hello b {
+  margin-inline-end: 0.35rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b6488;
+}
+.tf-guides-compact .tf-guide-card {
+  padding: 10px 8px 12px;
+}
+.ek-settings .tf-guides {
+  color: inherit;
+}
+.ek-settings .tf-guides-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 760px) {
+  .tf-guides-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .tf-guides-row {
+    gap: 8px;
+  }
+  .tf-guide-card {
+    padding: 10px 6px 12px;
+  }
+  .tf-guide-blurb {
+    display: none;
+  }
+}
+/* View in VR: only shown when a headset can start an immersive session. */
+.tf-vr {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-block-size: 40px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 224, 255, 0.28);
+  background: rgba(11, 16, 51, 0.78);
+  color: #eef1fb;
+  font: 700 0.95rem var(--font);
+  cursor: pointer;
+}
+.tf-vr[hidden] {
+  display: none;
+}
+.tf-vr:hover {
+  border-color: #93b4ff;
+}
+.tf-vr svg {
+  inline-size: 22px;
+  block-size: 22px;
+}
+.tf-vr.on {
+  background: #93b4ff;
+  color: #0c1330;
+}
 /* tf:end */
 
 /* tv:start (surface: landing, surface, ascent HUD; js/team/view-surface.js, js/team/surface3d-shooter.js)
@@ -4009,6 +4560,83 @@
   .tv-hud.tv-deciding .tv-corner { display: none; }
 }
 .tv-hud.tv-chrome ~ .tv-shoot .tv-viewname { top: 240px; }
+
+/* v3 (docs/TEAM-V3.md items 5, 6, 11): the mission goal line, your job, the "Why we're here" card,
+   the objectives by job, the quiet "whose job is this" hint, and waiting while others choose. */
+.tv-mission { display: flex; align-items: baseline; gap: 8px; max-width: 100%; padding: 5px 12px; font-size: clamp(13px, 1vw, 16px); color: var(--tv-dim); background: rgba(9, 14, 36, 0.5); border: 1px solid var(--tv-line); border-radius: 10px; }
+.tv-mission-k { flex: none; font-size: 0.85em; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tv-accent); }
+.tv-mission-t { color: var(--tv-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-job { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: clamp(13px, 1vw, 16px); color: var(--tv-text); background: rgba(9, 14, 36, 0.5); border: 1px solid var(--tv-line); border-radius: 999px; }
+.tv-job b { font-weight: 600; }
+.tv-job-what:empty { display: none; }
+.tv-track-list li span { min-width: 0; }
+.tv-track-list li em { font-style: normal; font-weight: 700; color: var(--c); margin-inline-end: 6px; }
+.tv-track-list li.mine { color: var(--tv-text); }
+.tv-track-list li.theirs { font-size: 14px; opacity: 0.85; }
+.tv-hud .tv-prompt.theirs { color: var(--tv-dim); background: rgba(9, 14, 36, 0.5); font-size: clamp(14px, 1.1vw, 18px); }
+.tv-choosing { position: absolute; inset-inline: 0; margin-inline: auto; inset-block-start: 18%; width: min(520px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 6px; padding: 18px 22px; text-align: center; background: rgba(9, 14, 36, 0.9); border: 1px solid var(--tv-line); border-radius: 16px; }
+.tv-choosing b { font-size: clamp(20px, 1.8vw, 28px); }
+.tv-choosing span { color: var(--tv-dim); font-size: clamp(15px, 1.2vw, 19px); }
+.tv-why { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(3, 5, 18, 0.45); pointer-events: auto; z-index: 3; }
+.tv-why-card { width: min(640px, 100%); max-height: calc(100% - 32px); overflow: auto; padding: 22px 26px; background: rgba(9, 14, 36, 0.94); border: 1px solid var(--tv-line); border-radius: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+.tv-why-kick { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tv-accent); }
+.tv-why-title { margin: 4px 0 12px; font-size: clamp(22px, 2vw, 30px); line-height: 1.15; }
+.tv-why-rows { margin: 0; display: grid; gap: 10px; }
+.tv-why-row { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.tv-why-row dt { font-size: 14px; font-weight: 700; color: var(--tv-dim); }
+.tv-why-row dd { margin: 0; font-size: clamp(16px, 1.25vw, 19px); line-height: 1.4; color: var(--tv-text); }
+.tv-why-me { display: flex; align-items: center; gap: 14px; margin-block-start: 16px; padding: 12px 14px; border: 1px solid var(--tv-line); border-inline-start: 3px solid var(--c); border-radius: 12px; background: rgba(255, 255, 255, 0.03); }
+.tv-why-me svg { flex: none; }
+.tv-why-me p { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.tv-why-me b { font-size: 18px; }
+.tv-why-me span { font-size: 16px; color: var(--tv-dim); line-height: 1.35; }
+.tv-why-crew { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
+.tv-why-crew li { display: flex; align-items: center; gap: 8px; font-size: 16px; }
+.tv-why-crew li span { color: var(--tv-dim); }
+.tv-why-go { display: block; margin: 18px 0 0 auto; padding: 12px 26px; font: inherit; font-size: 18px; font-weight: 700; color: #0b1033; background: var(--tv-text); border: 0; border-radius: 12px; cursor: pointer; }
+.tv-why-go:focus-visible { outline: 3px solid var(--tv-accent); outline-offset: 2px; }
+[dir='rtl'] .tv-why-go { margin: 18px auto 0 0; }
+.tv-hud.tv-landing .tv-job { display: none; }
+@media (max-width: 760px) {
+  .tv-why-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .tv-why-card { padding: 16px; }
+  .tv-mission-t { white-space: normal; }
+}
+
+/* v3 results side (js/team/view-debrief.js, docs/TEAM-V3.md item 12): where every point came from,
+   the outcome rule, and the crew on the surface as the characters picked in setup. */
+.tf-axis-max { font-size: 0.6em; font-weight: 600; color: var(--team-dim, #a7b0de); }
+.tf-score-rule { margin: 0.6rem 0 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0.3rem 0.5rem; font-size: clamp(0.95rem, 1.4vw, 1.15rem); color: var(--team-dim, #a7b0de); }
+.tf-score-rule b { color: var(--team-text, #f2f5ff); font-variant-numeric: tabular-nums; }
+.tf-score-rule span { flex-basis: 100%; text-align: center; font-size: 0.9em; }
+.tf-score-rule.tf-small { justify-content: flex-start; font-size: 0.9rem; margin: 0.2rem 0 0; }
+.tf-pts-open { margin-block-start: 0.6rem; }
+.tf-rev-layer.tf-pts-layer { z-index: 70; }
+.tf-pts { display: grid; gap: 0.7rem; }
+.tf-pts-axis { padding: 0.8rem 1rem; border: 1px solid rgba(242, 245, 255, 0.12); border-inline-start: 4px solid var(--c, #8fd3ff); border-radius: 14px; background: rgba(244, 246, 251, 0.04); }
+.tf-pts-axis header { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.tf-pts-axis h3 { margin: 0; font-size: 1.1rem; font-weight: 900; }
+.tf-pts-axis header b { font-size: 1.1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tf-pts-note { margin: 0.3rem 0 0; font-size: 0.88rem; color: var(--team-dim, #a7b0de); }
+.tf-pts-items { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.35rem; }
+.tf-pts-items li { display: grid; grid-template-columns: 1.2em minmax(0, 1fr) auto; gap: 0.5rem; align-items: baseline; font-size: 0.95rem; }
+.tf-pts-items li[data-st='ok'] .tf-pts-mark { color: #9be7c0; }
+.tf-pts-items li[data-st='no'] .tf-pts-mark { color: #ffb454; }
+.tf-pts-label { display: flex; flex-direction: column; min-width: 0; }
+.tf-pts-label small { font-size: 0.82rem; color: var(--team-dim, #a7b0de); }
+.tf-pts-num { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--team-dim, #a7b0de); }
+.tf-pts-rule { --c: #ffb454; }
+.tf-pts-rule[data-adj='0'] { --c: #9be7c0; }
+.tf-pts-total { display: flex; justify-content: space-between; margin: 0; padding: 0.6rem 1rem; font-size: 1.2rem; font-weight: 900; border-top: 1px solid rgba(242, 245, 255, 0.16); }
+.tf-crewdid { max-inline-size: 980px; inline-size: 100%; }
+.tf-crewdid h2 { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 800; color: var(--team-dim, #a7b0de); }
+.tf-crewdid ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.6rem; }
+.tf-crewdid li { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.7rem; border: 1px solid rgba(242, 245, 255, 0.12); border-inline-start: 3px solid var(--c); border-radius: 12px; background: rgba(244, 246, 251, 0.04); }
+.tf-crewdid li svg { flex: none; }
+.tf-crewdid-who { margin: 0; display: flex; flex-wrap: wrap; gap: 0 0.4rem; align-items: baseline; }
+.tf-crewdid-who b { font-size: 1rem; }
+.tf-crewdid-who span { font-size: 0.8rem; color: var(--c); }
+.tf-crewdid-did { margin: 0.15rem 0 0; font-size: 0.85rem; color: var(--team-dim, #a7b0de); line-height: 1.3; }
 /* tv:end */
 
 /* ---- Surface: who you are, where to go, what to press ---- */

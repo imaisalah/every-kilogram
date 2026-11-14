@@ -173,6 +173,8 @@ test('a whole v2 round on the real simulation: setup steps, every build step, qu
     const req = Sim.scenarios().find((x) => x.id === sc).requirements[0];
     a('pick', { requirement: req.id });
     a('forward');
+    assert.strictEqual(r.phase, 'define', 'the Mission definition before the build');
+    a('forward');
     const steps = Sim.buildSteps(sc, 'engineer');
     for (const st of steps) {
       assert.strictEqual(Room.viewFor(r, 'local').buildStep, steps.indexOf(st));
@@ -196,4 +198,91 @@ test('a whole v2 round on the real simulation: setup steps, every build step, qu
     assert.strictEqual(r.phase, 'flight');
     assert.strictEqual(r.design.requirement, req.id);
   }
+});
+
+// ---------- v3: roles own their steps in solo; the AI crew picks the rest (docs/TEAM-V3.md item 2) ----------
+require('../js/team/crew.js');
+function soloTo(scenarioId, difficulty, job, crew, requirement) {
+  let r = Room.create({ mode: 'solo', seed: 42, scenarioId: 'moon' });
+  let now = 0;
+  const a = (type, extra) => {
+    r = Room.reduce(r, { type, by: 'local', ...extra }, (now += 50));
+    return r;
+  };
+  a('setup', { difficulty });
+  a('forward');
+  a('setRole', { role: job, crew });
+  a('forward');
+  a('setup', { scenarioId });
+  a('forward');
+  a('forward');
+  if (requirement) a('pick', { requirement });
+  a('forward');
+  assert.strictEqual(r.phase, 'define');
+  a('forward');
+  assert.strictEqual(r.phase, 'design');
+  return { get r() { return r; }, a };
+}
+
+test('v3 solo: the player builds only their job; crewmates pick the rest and answer suggestions in their own voice', () => {
+  const g = soloTo('mars', 'engineer', 'engineer', 'mateo', 'ice');
+  const v = Room.viewFor(g.r, 'local');
+  assert.strictEqual(v.soloJob, 'engineer');
+  const steps = Sim.buildSteps('mars', 'engineer');
+  for (const st of steps) {
+    const note = v.crewNotes[st.id];
+    if (st.role === 'engineer') assert.ok(!note, `${st.id} is the player's`);
+    else {
+      assert.ok(note && note.text && note.name, `${st.id} has a crewmate's pick`);
+      assert.notStrictEqual(note.name, 'Mateo');
+    }
+  }
+  assert.ok(!g.r.checks.some((c) => c.hard && !c.ok), 'the crew fitted a rocket that lifts it');
+  // A suggestion on a crewmate's step gets an answer at once.
+  const radio = Sim.stepCards(g.r.design, 'radio').find((c) => !c.on);
+  g.a('suggest', { step: 'radio', option: radio.id });
+  const sug = Room.viewFor(g.r, 'local').suggestions.radio;
+  assert.ok(sug.reply === 'ok' || sug.reply === 'no');
+  assert.ok(sug.replyText && sug.replyBy);
+  if (sug.reply === 'ok') assert.strictEqual(Sim.stepChoice(g.r.design, 'radio'), radio.id);
+  // The player's own step is theirs to set.
+  const own = Sim.stepCards(g.r.design, 'thermal').find((c) => !c.on);
+  g.a('build', { step: 'thermal', option: own.id });
+  assert.ok(g.r.last.ok);
+  assert.strictEqual(Sim.stepChoice(g.r.design, 'thermal'), own.id);
+});
+
+test('v3 solo: the demo planner can still send its builds; crewmates take them as suggestions', () => {
+  const g = soloTo('mars', 'cadet', 'planner', 'salma', 'ice');
+  for (const [step, option] of [['orbit', 'polar300'], ['power', 'p14'], ['instruments', 'sounder'], ['instruments', 'hires'], ['radio', 'big'], ['landing', 'balanced']]) {
+    g.a('build', { step, option });
+    assert.ok(g.r.last.ok, `${step} ${option}: ${g.r.last.text}`);
+  }
+  assert.strictEqual(g.r.design.picks.orbit, 'polar300', 'the orbit is the planner’s own');
+  const rocket = Sim.stepCards(g.r.design, 'rocket').find((c) => c.flies);
+  g.a('build', { step: 'rocket', option: rocket.id });
+  g.a('forward');
+  assert.ok(g.r.last.ok);
+});
+
+test('v3: locked choices are refused by the room with the reason', () => {
+  const g = soloTo('storms', 'engineer', 'planner', 'salma', 'early');
+  g.a('build', { step: 'orbit', option: 'sso600' });
+  assert.strictEqual(g.r.last.code, 'locked');
+  assert.match(g.r.last.text, /early warning/);
+  g.a('set', { role: 'planner', key: 'orbit', value: 'sso600' });
+  assert.strictEqual(g.r.last.code, 'locked');
+});
+
+test('v3: host next skips the Mission definition; stepTo from it opens the build', () => {
+  let r = Room.create({ mode: 'solo', seed: 3, scenarioId: 'cubesat', difficulty: 'engineer' });
+  let now = 0;
+  r = Room.reduce(r, { type: 'start', by: 'local' }, (now += 10));
+  r = Room.reduce(r, { type: 'forward', by: 'local' }, (now += 10));
+  r = Room.reduce(r, { type: 'forward', by: 'local' }, (now += 10));
+  assert.strictEqual(r.phase, 'define');
+  r = Room.reduce(r, { type: 'stepTo', by: 'local', index: 2 }, (now += 10));
+  assert.strictEqual(r.phase, 'design');
+  assert.strictEqual(r.buildStep, 2);
+  assert.ok(r.design && r.design.scenario === 'cubesat');
 });

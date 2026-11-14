@@ -28,6 +28,8 @@ function toDesign(n = 4, opts) {
   s = Room.tick(s, 2000);
   assert.strictEqual(s.phase, 'questions');
   s = act(s, made.ids[0], 'forward');
+  assert.strictEqual(s.phase, 'define', 'the Mission definition comes before the build');
+  s = act(s, made.ids[0], 'forward');
   assert.strictEqual(s.phase, 'design');
   return { s, ids: made.ids };
 }
@@ -113,14 +115,22 @@ test('phones cannot perform host actions or pose as someone else', () => {
   assert.notStrictEqual(planner, s.roles.engineer);
 });
 
-test('brief leads to a pre-build success criterion, then spacecraft design', () => {
+test('brief leads to a pre-build success criterion, the mission definition, then spacecraft design', () => {
   let { s, ids } = setup(2);
   s = act(s, 'host', 'start');
   s = Room.tick(s, 2000);
   assert.strictEqual(s.phase, 'questions');
   s = act(s, ids[0], 'pick', { requirement: 'wide' });
   s = act(s, ids[0], 'forward');
+  assert.strictEqual(s.phase, 'define');
+  s = act(s, ids[0], 'back');
+  assert.strictEqual(s.phase, 'questions', 'Back from the definition returns to the success criterion');
+  s = act(s, ids[0], 'forward');
+  s = act(s, ids[0], 'forward');
   assert.strictEqual(s.phase, 'design');
+  s = act(s, 'host', 'back');
+  assert.strictEqual(s.phase, 'define', 'Back from the first build step returns to the definition');
+  s = act(s, ids[0], 'forward');
   assert.strictEqual(s.design.requirement, 'wide');
 });
 
@@ -783,6 +793,8 @@ test('a whole Moon round on the real simulation, including the surface hand-off'
     assert.ok(s.requirementId, 'a real requirement is preselected');
     for (const id of ids) s = act(s, id, 'pick', { requirement: s.requirementId });
     s = act(s, ids[0], 'forward');
+    assert.strictEqual(s.phase, 'define');
+    s = act(s, ids[0], 'forward');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.design.scenario, landing.id);
     assert.ok(s.resources.mass && s.resources.power, 'real dashboard');
@@ -907,6 +919,8 @@ test('the build goes one step at a time and Back never loses a choice', () =>
     assert.strictEqual(s.phase, 'questions');
     s = act(s, 'local', 'pick', { requirement: 'sites' });
     s = act(s, 'local', 'forward');
+    assert.strictEqual(s.phase, 'define');
+    s = act(s, 'local', 'forward');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.buildStep, 0);
     const steps = Sim.buildSteps('mars', 'engineer');
@@ -917,7 +931,10 @@ test('the build goes one step at a time and Back never loses a choice', () =>
     assert.ok(s.last.ok, s.last.text);
     s = act(s, 'local', 'back');
     s = act(s, 'local', 'back');
-    assert.strictEqual(s.phase, 'questions', 'back from the first step returns to the success criterion');
+    assert.strictEqual(s.phase, 'define', 'back from the first step returns to the mission definition');
+    s = act(s, 'local', 'back');
+    assert.strictEqual(s.phase, 'questions', 'and then to the success criterion');
+    s = act(s, 'local', 'forward');
     s = act(s, 'local', 'forward');
     assert.strictEqual(s.design.picks.orbit, 'polar300', 'kept through Back');
     assert.strictEqual(s.design.picks.panels, 'tj8');
@@ -970,6 +987,8 @@ test('multiplayer: the step owner picks, others suggest, and only the owner or h
     s = act(s, host, 'start');
     s = act(s, host, 'forward');
     s = act(s, host, 'pick', { requirement: s.requirementId });
+    s = act(s, host, 'forward');
+    assert.strictEqual(s.phase, 'define');
     s = act(s, host, 'forward');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.roles.planner, bea, 'the orbit step belongs to the planner');

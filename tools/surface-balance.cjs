@@ -6,6 +6,9 @@
 //   --cf          missions per one-change variant per world (the "what decided it" table)
 //   --skip-tiers  only the one-change table
 //   --with-human  one seat is an idle person (bots wait for people before calling everyone home)
+//   --human-job   that person's job (planner, engineer, scientist, comms; default planner). With the
+//                 jobs rule (docs/TEAM-V3.md item 5) an idle person leaves their own job undone.
+//   --no-jobs     the old shared mission: anyone may scan, plant, align and repair
 // Plays all-bot missions. Results: success (extracted, objective met, 25% of the map's science),
 // partial (extracted, short of that), stranded (the ascent window closed).
 const path = require('node:path');
@@ -61,10 +64,11 @@ const SEEDS = Number(opt('seeds', 40));
 const CF = Number(opt('cf', 30));
 const WORLDS = opt('worlds', 'moon,mars,venus,europa').split(',');
 const DIFFS = opt('difficulties', 'cadet,engineer,director').split(',');
-const humans = flag('with-human') ? [{ id: 'h', role: 'planner' }] : 0;
+const humans = flag('with-human') ? [{ id: 'h', role: opt('human-job', 'planner') }] : 0;
+const JOBS = !flag('no-jobs');
 
 function play(load, world, seed, difficulty) {
-  const st = SURF.create(load, seed, humans, { difficulty, world });
+  const st = SURF.create(load, seed, humans, { difficulty, world, jobs: JOBS });
   let guard = 0;
   while (!st.over && guard++ < 30000) SURF.step(st, {}, SURF.TICK);
   return SURF.summary(st);
@@ -90,7 +94,7 @@ function cell(tier, world, difficulty, n) {
 
 const pct = (x, n) => `${Math.round((100 * x) / n)}%`;
 const t0 = Date.now();
-console.log(`Surface balance: ${SEEDS} missions per cell, bots${humans ? ' + one idle person' : ' only'}.\n`);
+console.log(`Surface balance: ${SEEDS} missions per cell, bots${humans ? ` + one idle ${humans[0].role}` : ' only'}, jobs rule ${JOBS ? 'on' : 'off'}.\n`);
 console.log('Completion (success / partial / stranded), average objectives done, share of the map\'s science home, mission length, suit returns, samples thrown overboard:\n');
 console.log('| Design | Difficulty | ' + WORLDS.map((w) => w[0].toUpperCase() + w.slice(1)).join(' | ') + ' |');
 console.log('|---|---|' + WORLDS.map(() => '---').join('|') + '|');

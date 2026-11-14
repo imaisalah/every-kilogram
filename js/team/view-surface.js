@@ -74,6 +74,138 @@
     return ctx.state || ctx.view || {};
   }
 
+  // ---------- The crew picked in setup (docs/TEAM-V3.md item 6) ----------
+  // Each astronaut on the surface is a character from js/team/crew.js: a person's own pick
+  // (a roster member or a custom astronaut), and for the bots the members of the jobs left.
+  const JOBS = ['planner', 'engineer', 'scientist', 'comms'];
+  function memberOf(crewId, playerName) {
+    const C = team.crew;
+    if (!C || !crewId) return null;
+    try {
+      const custom = C.isCustom && C.isCustom(crewId);
+      return C.byId(crewId, custom && playerName ? { name: playerName } : undefined) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function shortName(m) {
+    if (!m) return '';
+    try {
+      const s = team.crew && team.crew.text ? team.crew.text(m, 'short') : '';
+      if (s) return s;
+    } catch (e) {}
+    return String(m.short || m.name || '').split(' ')[0];
+  }
+  const jobName = (job) => (team.crew && team.crew.jobName ? team.crew.jobName(job) : team.kit && team.kit.roleName ? team.kit.roleName(job) : job);
+  // roster: the room's [{ id, role, name, bot, controller }]. Returns a copy where each seat
+  // has its character's job (role), crewId, short name and the person's name.
+  function crewRoster(ctx, roster) {
+    const C = team.crew;
+    const v = (ctx && (ctx.view || ctx.state)) || {};
+    const r = (ctx && ctx.state) || v;
+    const picks = Object.assign({}, r.crewPick || {}, v.crewPick || {});
+    const players = Array.isArray(v.players) ? v.players : [];
+    const mode = r.mode || v.mode;
+    const local = mode === 'solo' || mode === 'one';
+    const out = (roster || []).map((p) => Object.assign({}, p));
+    const taken = new Set();
+    let firstPerson = true;
+    for (const p of out) {
+      const person = p.controller ? p.controller !== 'bot' : !p.bot;
+      if (!person) continue;
+      const pl = players.find((x) => x && x.id === p.id) || null;
+      let cid = picks[p.id] || (pl && (pl.crewId || pl.crew || pl.character)) || null;
+      if (!cid && local && firstPerson) {
+        const me = players.find((x) => x && !x.bot) || null;
+        cid = picks.local || (me && (me.crewId || me.crew)) || r.crewId || null;
+        if (!cid) {
+          try {
+            const saved = team.kit && team.kit.prefs && team.kit.prefs.get ? team.kit.prefs.get('crew', '') : '';
+            if (saved) cid = saved;
+          } catch (e) {}
+        }
+      }
+      firstPerson = false;
+      const playerName = local ? '' : (pl && pl.name) || (p.name && !/^P\d$/.test(p.name) ? p.name : '');
+      const m = memberOf(cid, playerName);
+      if (m && JOBS.includes(m.job) && !taken.has(m.job)) {
+        p.role = m.job;
+        p.crewId = m.id;
+        p.member = m;
+        taken.add(m.job);
+      }
+      p.playerName = playerName;
+    }
+    // Everyone else takes the jobs that are left (their own when it is free), as that job's character.
+    const free = JOBS.filter((j) => !taken.has(j));
+    for (const p of out) {
+      if (p.member) continue;
+      const job = free.includes(p.role) ? p.role : free[0] || p.role;
+      if (free.includes(job)) free.splice(free.indexOf(job), 1);
+      p.role = job;
+      const m = C && C.byJob ? C.byJob(job) : null;
+      if (m) {
+        p.member = m;
+        p.crewId = m.id;
+      }
+    }
+    for (const p of out) if (p.member) p.name = shortName(p.member);
+    return out;
+  }
+  // The 3D look of an astronaut: the character's appearance, when there is one.
+  function lookOf(e) {
+    const m = memberOf(e && e.crewId, e && e.playerName);
+    return m && m.appearance ? m.appearance : null;
+  }
+
+  // ---------- Why we're here (docs/TEAM-V3.md item 11) ----------
+  // The science need, the mission goal and what success looks like down here, from the
+  // scenario's traceability (item 3) and the success criterion picked before the build.
+  function hasKey(key) {
+    if (!(SMD.dir && SMD.dir() === 'rtl')) return true;
+    const d = SMD.i18nDicts && SMD.i18nDicts.ar;
+    return !!(d && d[key]);
+  }
+  function missionWhy(ctx, objectiveKind) {
+    const r = roomOf(ctx);
+    const v = ctx.view || r;
+    const sim = ctx.sim;
+    let sc = null;
+    try {
+      sc = (sim && sim.scenarios ? sim.scenarios() : []).find((x) => x.id === (r.scenarioId || v.scenarioId)) || null;
+    } catch (e) {}
+    const design = r.design || v.design || null;
+    let trace = null;
+    try {
+      if (sim && typeof sim.traceability === 'function' && design) trace = sim.traceability(design);
+    } catch (e) {}
+    const id = sc && sc.id;
+    const pick = (key, en) => (en && hasKey(key) ? t(key, en) : '');
+    const need = (trace && typeof trace.need === 'string' && trace.need) || (sc && (pick(`scn.${id}.need`, sc.need) || pick(`scn.${id}.question`, sc.question))) || '';
+    const goal = (trace && typeof trace.goal === 'string' && trace.goal) || (sc && pick(`scn.${id}.objective`, sc.objective)) || '';
+    const reqId = (design && design.requirement) || r.requirement || v.requirement || null;
+    const req = sc && Array.isArray(sc.requirements) ? sc.requirements.find((q) => q.id === reqId) || null : null;
+    const reqText = req ? `${t(`scn.${id}.req.${req.id}.title`, req.title)}: ${t(`scn.${id}.req.${req.id}.text`, req.text)}` : '';
+    const kind = objectiveKind ? t('team.surface.kind.' + objectiveKind, objectiveKind) : '';
+    const pct = Math.round(((team.surface && team.surface.TUNE && team.surface.TUNE.winScienceFrac) || 0.25) * 100);
+    let surface = t('team.surface.why.surface', 'Down here: scan the {kind} sites, send their data home in the uplink windows, and lift off together with at least {pct}% of the science.', { kind, pct: ltr(pct) });
+    // The signature missions ask something of their own (docs/TEAM-V3.md item 19).
+    let world = null;
+    try {
+      world = (sc && sc.surface && sc.surface.world) || null;
+    } catch (e) {}
+    if (world === 'moon') surface += ' ' + t('team.surface.why.moon', 'The ice hides in a crater that never sees the Sun: the coldest place on the map. Plan air and suit power to reach it, and a battery for the long night.');
+    if (world === 'mars') surface += ' ' + t('team.surface.why.mars', 'Drill an ice core and lift it home: the layers record the climate. Dust storms coat the solar panels.');
+    return { title: sc ? t(`scn.${id}.title`, sc.title || '') : '', need, goal, reqText, surface };
+  }
+  // What each job does down here: one plain line.
+  const JOB_LINE = {
+    scientist: () => t('team.surface.job.scientist', 'You scan the science sites and choose which samples fly home.'),
+    comms: () => t('team.surface.job.comms', 'You plant and aim the dish and keep the data going home in each uplink window.'),
+    engineer: () => t('team.surface.job.engineer', 'You keep the lander running: fix its faults and patch worn suits.'),
+    planner: () => t('team.surface.job.planner', 'You plan the route, watch the clock, call everyone home and plan the ascent.'),
+  };
+
   function mount(el, ctx, phase) {
     const room = roomOf(ctx);
     const key = String(room.code || 'local') + ':' + String(room.round || 0) + ':' + String((room.surface && room.surface.seed) || room.seed || 0);
@@ -168,6 +300,31 @@
     const dropsSeen = {};
     const lastDropBtn = {};
     let landingDrift = { driftX: 0, driftZ: 0, radius: 12 };
+    // "Why we're here" (docs/TEAM-V3.md item 11): a card before the descent, then a goal line.
+    let why = null;
+    let whyState = 0; // 0 not yet shown, 1 open, 2 done
+    let whyAt = 0;
+    let clientLandAt = 0;
+    const WHY_HOLD_S = 4.5; // the descent waits this long at most (the room's landing timer is short)
+    const WHY_MAX_S = 10; // the card closes by itself after this long
+    function whyTick(s) {
+      if (!s) return;
+      if (!why) why = missionWhy(ctx, (s.loadout && s.loadout.objective) || null);
+      if (whyState === 0 && phase === 'landing') {
+        whyState = 1;
+        whyAt = nowS();
+        const me = myId ? s.entities.find((e) => e.kind === 'astronaut' && e.playerId === myId) : null;
+        const crew = s.entities.filter((e) => e.kind === 'astronaut');
+        hud.showWhy(why, ownScreen || room0.mode === 'solo' ? me : null, crew, closeWhy);
+      }
+      if (whyState === 1 && (phase !== 'landing' || nowS() - whyAt > WHY_MAX_S)) closeWhy();
+    }
+    function closeWhy() {
+      if (whyState !== 1) return;
+      whyState = 2;
+      hud.hideWhy();
+    }
+    const descentHeld = () => whyState === 0 || (whyState === 1 && nowS() - whyAt < WHY_HOLD_S);
 
     // The shared pause menu and mission bar, when the flow's kit has them.
     const pauseHandle = kitPauseHandle(stage, ctx0);
@@ -246,8 +403,8 @@
       }
       const world = (loadout && loadout.world) || worldId();
       if (!loadout) loadout = S.fixture('good', world);
-      const roster = (r.surface && r.surface.roster) || [];
-      const players = roster.map((p) => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot }));
+      const roster = crewRoster(ctx, (r.surface && r.surface.roster) || []);
+      const players = roster.map((p) => ({ id: p.id, name: p.name, role: p.role, bot: !!p.bot, crewId: p.crewId || null, playerName: p.playerName || null }));
       if (devices) myId = (ctx.session && ctx.session.playerId) || (ctx.view && ctx.view.me && ctx.view.me.id) || null;
       const seed = (r.surface && r.surface.seed) || r.seed || 1;
       host = restoreCheckpoint(r, seed) || S.create(loadout, seed, players, { hazards: r.hazards || 'anomalies', difficulty: r.difficulty || 'engineer', world });
@@ -327,7 +484,7 @@
         const m = await import(new URL('js/team/surface3d.js', document.baseURI).href);
         if (destroyed) return;
         if (room0.mode === 'solo' && !myId) myId = firstLocal();
-        renderer = m.createSurface({ state, camera: ownScreen && myId ? { mode: 'player', id: myId } : { mode: 'group' } });
+        renderer = m.createSurface({ state, camera: ownScreen && myId ? { mode: 'player', id: myId } : { mode: 'group' }, lookOf });
         renderer.el = stage;
         const baseUpdate = renderer.update;
         renderer.update = (dt, t3d) => {
@@ -418,7 +575,9 @@
       else hostFrame(dt);
       const s = shownState();
       if (s) {
-        hud.update(s, { client: ownScreen || !!shooter, phase, myId, renderer, landingK, audio, ctx, shooter, paused: paused(), kitPause: !!pauseHandle });
+        whyTick(s);
+        if (!why) why = missionWhy(ctx, (s.loadout && s.loadout.objective) || null);
+        hud.update(s, { client: ownScreen || !!shooter, phase, myId, renderer, landingK, audio, ctx, shooter, paused: paused(), kitPause: !!pauseHandle, why });
         audio.frame(dt, s, myId);
         publishProgress(s);
       }
@@ -444,6 +603,12 @@
       updateShooterState();
       // Landing: a cinematic the crew can steer a little.
       if (phase === 'landing') {
+        whyTick(host);
+        if (descentHeld()) {
+          if (renderer) renderer.cinematic('landing', 0, landingDrift);
+          broadcast();
+          return;
+        }
         // Wall clock: the descent ends on time even on a machine dropping frames.
         if (!landingStart) landingStart = nowS();
         landingK = clamp((nowS() - landingStart) / LANDING_S);
@@ -469,6 +634,7 @@
         return;
       }
       if (renderer) renderer.cinematic(launchT >= 0 ? 'launch' : null, launchProgress());
+      whyTick(host);
 
       // Paused: the world holds still; the network keeps the last picture.
       if (paused() && !host.over) {
@@ -570,6 +736,8 @@
           const item = map[who];
           if (!item || dropsSeen[who] === item.at) continue;
           dropsSeen[who] = item.at;
+          // Only the scientist and the planner choose what stays behind (docs/TEAM-V3.md item 5).
+          if (S.canDo && host.entities.some((e) => e.kind === 'astronaut' && e.playerId === who) && !S.canDo(host, who, 'choose')) continue;
           for (const id of item.ids || [item.id]) S.jettison(host, id);
         }
       }
@@ -579,6 +747,7 @@
         const was = lastDropBtn[id];
         lastDropBtn[id] = true;
         if (was) continue;
+        if (S.canDo && !S.canDo(host, id, 'choose')) continue;
         const rack = (host.ascent.rack || []).slice().sort((a, b) => a.value / a.massKg - b.value / b.massKg);
         if (rack.length) S.jettison(host, rack[0].id);
       }
@@ -691,9 +860,13 @@
       }
       if (renderer) {
         if (phase === 'landing') {
-          landingK = clamp((now - startedAt) / LANDING_S);
+          whyTick(sampled);
+          if (descentHeld()) clientLandAt = 0;
+          else if (!clientLandAt) clientLandAt = now;
+          landingK = clientLandAt ? clamp((now - clientLandAt) / LANDING_S) : 0;
           renderer.cinematic('landing', landingK, landingDrift);
         } else if (sampled.over && sampled.outcome === 'extracted') {
+          whyTick(sampled);
           if (launchT < 0) launchT = now;
           renderer.cinematic('launch', launchProgress());
         } else {
@@ -1082,10 +1255,12 @@
     root.className = 'tv-hud';
     root.innerHTML = `
       <div class="tv-left">
+      <div class="tv-mission" hidden><span class="tv-mission-k"></span><span class="tv-mission-t"></span></div>
       <div class="tv-goal">
         <span class="tv-goal-arrow">${ICON.arrow}</span>
         <div class="tv-goal-text"><b class="tv-goal-title"></b><span class="tv-goal-dist"></span></div>
       </div>
+      <div class="tv-job" hidden><i class="tv-dot"></i><b class="tv-job-name"></b><span class="tv-job-what"></span></div>
       <div class="tv-track" hidden>
         <div class="tv-track-head"><span class="tv-track-label"></span><b class="tv-track-pct"></b></div>
         <div class="tv-track-bar"><i></i></div>
@@ -1110,6 +1285,8 @@
       <div class="tv-crew"></div>
       <div class="tv-prompt" hidden></div>
       <div class="tv-ascent" hidden></div>
+      <div class="tv-choosing" hidden><b class="tv-choosing-title"></b><span class="tv-choosing-sub"></span></div>
+      <div class="tv-why" hidden role="dialog" aria-modal="false"></div>
       <div class="tv-hint"></div>
       <div class="tv-coach" hidden></div>
       <div class="tv-beacon" hidden><span class="tv-beacon-arrow">${ICON.arrow}</span><b class="tv-beacon-label"></b></div>
@@ -1126,7 +1303,13 @@
       },
     });
     // Enter lifts off with the plan on screen (keyboard players).
+    let whyGo = null;
     const onKey = (e) => {
+      if (whyGo && !$('.tv-why').hidden && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        whyGo();
+        return;
+      }
       if (e.key !== 'Enter' || !root.classList.contains('tv-deciding')) return;
       if (chooser.confirm()) e.preventDefault();
     };
@@ -1165,16 +1348,30 @@
       return crew.find((e) => (o.myId ? e.playerId === o.myId : !e.isBot)) || crew.find((e) => !e.isBot) || null;
     }
 
+    // The character holding a job, by name (docs/TEAM-V3.md item 6).
+    function nameOfJob(s, job) {
+      const a = s.entities.find((e) => e.kind === 'astronaut' && e.role === job);
+      return a ? a.name : jobName(job);
+    }
+    function choosersOf(s) {
+      return [nameOfJob(s, 'scientist'), nameOfJob(s, 'planner')].join(t('team.surface.and', ' and '));
+    }
+
     // The one line on screen that says what to do now, and where.
     function goalLine(s, o, me) {
       const S = team.surface;
       if (o.phase === 'landing') return { title: t('team.surface.obj.landing', 'Bring the lander onto the target'), target: s.map.lander };
       if (s.over && s.outcome === 'extracted') return { title: t('team.surface.obj.liftoff', 'Liftoff'), target: null };
       if (s.over) return { title: lostShort(s.outcome), target: null };
-      if (s.extraction && s.extraction.decision > 0) return { title: t('team.surface.obj.choose', 'Too heavy: choose what stays behind'), target: null };
+      if (s.extraction && s.extraction.decision > 0) {
+        if (me && S && S.canDo && !S.canDo(s, me.playerId, 'choose')) return { title: t('team.surface.obj.chooseOthers', 'Too heavy: {who} choose what stays behind', { who: choosersOf(s) }), target: null };
+        return { title: t('team.surface.obj.choose', 'Too heavy: choose what stays behind'), target: null };
+      }
       const g = S && S.nextGoal ? S.nextGoal(s, me ? me.playerId : null) : { id: 'home', target: s.map.lander };
       const site = g.target && g.target.kind === 'site' ? g.target : null;
       const sample = g.target && g.target.kind === 'sample' ? g.target : null;
+      const phones = ((o.ctx && ((o.ctx.view && o.ctx.view.mode) || (o.ctx.state && o.ctx.state.mode))) || '') === 'phones';
+      const keys = phones ? { e: t('team.surface.useBtn', 'USE'), q: t('team.surface.abilityBtn', 'the ability button') } : { e: 'E', q: 'Q' };
       const titles = {
         return: () => t('team.surface.goal.return', 'Head back to the lander: liftoff soon'),
         returning: () => t('team.surface.goal.returning', 'Your suit is walking you back to the lander'),
@@ -1185,9 +1382,17 @@
         plant: () => t('team.surface.goal.plant', 'Plant the dish next to the lander'),
         hold: () => t('team.surface.goal.hold', 'Stay by the dish while the data goes home'),
         sample: () => t('team.surface.goal.pick', 'Pick up the {kind} sample', { kind: kindName(sample && sample.siteKind) }),
-        scan: () => t('team.surface.goal.scanSite', 'Scan the {kind} site', { kind: kindName(site && site.siteKind) }),
+        scan: () => (site && site.shadow ? t('team.surface.goal.scanShadow', 'Scan the {kind} in the shadowed crater: bitter cold, watch your suit', { kind: kindName(site.siteKind) }) : t('team.surface.goal.scanSite', 'Scan the {kind} site', { kind: kindName(site && site.siteKind) })),
         wait: () => t('team.surface.goal.wait', 'Wait by the dish for the next uplink'),
         home: () => t('team.surface.goal.home2', 'All done: return to the lander'),
+        // docs/TEAM-V3.md item 5: each job's own tasks.
+        align: () => t('team.surface.goal.align', 'Realign the dish: hold {e} at the dish', { e: keys.e }),
+        repair: () => (g.target && g.target.kind === 'charger' ? t('team.surface.goal.repairCharger', 'Fix the tripped suit charger on the lander') : t('team.surface.goal.repairPanels', 'Clean the dusty solar panels on the lander')),
+        patch: () => t('team.surface.goal.patch', "Patch {name}'s worn suit: {q} next to them", { name: (g.target && g.target.name) || '', q: keys.q }),
+        systems: () => t('team.surface.goal.systems2', 'Lander systems are fine: help carry samples, or stand by'),
+        route: () => t('team.surface.goal.route', 'Mark the next site for {name}: face it and tap {q}', { name: nameOfJob(s, 'scientist'), q: keys.q }),
+        call: () => t('team.surface.goal.call', 'The work is done: hold {q} to call everyone home', { q: keys.q }),
+        watch: () => t('team.surface.goal.watch', 'Watch the clock: hold {q} to call everyone home in time', { q: keys.q }),
       };
       return { title: (titles[g.id] || titles.home)(), target: g.target, id: g.id };
     }
@@ -1220,6 +1425,37 @@
       setChrome(on) {
         root.classList.toggle('tv-chrome', !!on);
       },
+      // "Why we're here": the need, the goal, what success looks like, and your job.
+      showWhy(w, me, crew, onGo) {
+        const box = $('.tv-why');
+        if (!w) return;
+        whyGo = onGo || null;
+        const row = (k, v) => (v ? `<div class="tv-why-row"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>` : '');
+        const m = me ? memberOf(me.crewId, me.playerName) : null;
+        let face = '';
+        try {
+          face = m && team.crew && team.crew.portrait ? team.crew.portrait(m, { size: 64 }) : '';
+        } catch (e) {}
+        const you = me && me.role
+          ? `<div class="tv-why-me" style="--c:${ROLE_COLOR[me.role] || '#fff'}">${face}<p><b>${esc(t('team.surface.why.you', 'You are {name}, {job}', { name: me.name, job: jobName(me.role) }))}</b><span>${esc(JOB_LINE[me.role] ? JOB_LINE[me.role]() : '')}</span></p></div>`
+          : `<ul class="tv-why-crew">${(crew || []).slice().sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)).map((a) => `<li style="--c:${ROLE_COLOR[a.role] || '#fff'}"><i class="tv-dot"></i><b>${esc(a.name)}</b><span>${esc(jobName(a.role))}</span></li>`).join('')}</ul>`;
+        box.innerHTML = `<div class="tv-why-card">
+          <p class="tv-why-kick">${esc(t('team.surface.why.kick', 'Why we are here'))}</p>
+          ${w.title ? `<h2 class="tv-why-title">${esc(w.title)}</h2>` : ''}
+          <dl class="tv-why-rows">${row(t('team.surface.why.need', 'The need'), w.need)}${row(t('team.surface.why.goal', 'Our goal'), w.goal)}${row(t('team.surface.why.success', 'Success looks like'), [w.reqText, w.surface].filter(Boolean).join(' '))}</dl>
+          ${you}
+          <button type="button" class="tv-why-go">${esc(t('team.surface.why.go', 'Begin the descent'))}</button>
+        </div>`;
+        box.hidden = false;
+        box.querySelector('.tv-why-go').addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (whyGo) whyGo();
+        });
+      },
+      hideWhy() {
+        whyGo = null;
+        $('.tv-why').hidden = true;
+      },
       setWaiting(text) {
         $('.tv-wait').textContent = text || '';
         $('.tv-wait').hidden = !text;
@@ -1251,6 +1487,24 @@
         $('.tv-paused').hidden = !(o.paused && !o.kitPause);
         $('.tv-pausebtn').hidden = !surface || !!o.kitPause;
 
+        // The mission's goal, always on screen during the landing and on the surface (item 11).
+        const W = o.why;
+        const mi = $('.tv-mission');
+        mi.hidden = !(W && W.goal) || !!s.over;
+        if (W && W.goal) {
+          $('.tv-mission-k').textContent = t('team.surface.why.goalK', 'Mission goal');
+          if ($('.tv-mission-t').textContent !== W.goal) $('.tv-mission-t').textContent = W.goal;
+        }
+        // Who you are down here and your job (items 5 and 6).
+        const jobEl = $('.tv-job');
+        const showJob = surface && o.client && me && me.role && s.jobs !== false && !s.over;
+        jobEl.hidden = !showJob;
+        if (showJob) {
+          jobEl.style.setProperty('--c', ROLE_COLOR[me.role] || '#fff');
+          const nm = t('team.surface.youAre', '{name} · {job}', { name: me.name, job: jobName(me.role) });
+          if ($('.tv-job-name').textContent !== nm) $('.tv-job-name').textContent = nm;
+        }
+
         // Objective line and distance.
         $('.tv-goal-title').textContent = goal.title;
         const dist = goal.target && me && !me.aboard ? Math.hypot(goal.target.x - me.x, goal.target.z - me.z) : null;
@@ -1270,11 +1524,24 @@
           if (lastDone < 0) trackOpenUntil = now + 9000;
           lastDone = done;
           box.classList.toggle('open', now < trackOpenUntil);
-          const sig = objs.map((x) => x.id + (x.done ? 1 : 0) + x.text).join('|');
+          // Your job's lines first; the others say which crewmate does them (items 5 and 6).
+          const myJob = o.client && me && s.jobs !== false ? me.role : null;
+          const OJ = (team.surface && team.surface.OBJECTIVE_JOB) || {};
+          const rows = objs.map((x) => {
+            const job = x.job !== undefined && x.job !== null ? x.job : OJ[x.id] || null;
+            return { x, job, mine: !myJob || !job || job === myJob };
+          });
+          if (myJob) rows.sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0));
+          const sig = myJob + rows.map((r) => r.x.id + (r.x.done ? 1 : 0) + r.x.text).join('|');
           const list = $('.tv-track-list');
           if (list.dataset.sig !== sig) {
             list.dataset.sig = sig;
-            list.innerHTML = objs.map((x) => `<li class="${x.done ? 'done' : ''}"><i></i>${esc(x.text)}</li>`).join('');
+            list.innerHTML = rows
+              .map((r) => {
+                const who = r.job && (!r.mine || !myJob) ? `<em style="--c:${ROLE_COLOR[r.job] || '#fff'}">${esc(nameOfJob(s, r.job))}</em>` : '';
+                return `<li class="${r.x.done ? 'done' : ''} ${r.mine && myJob ? 'mine' : r.job ? 'theirs' : ''}"><i></i><span>${who}${esc(r.x.text)}</span></li>`;
+              })
+              .join('');
           }
         }
 
@@ -1344,14 +1611,21 @@
         // What Use does right now, on your own screen.
         const promptEl = $('.tv-prompt');
         const prompt = me && s.prompts ? s.prompts[me.playerId] : null;
-        const showPrompt = surface && o.client && prompt && !(s.extraction && s.extraction.decision > 0);
-        promptEl.hidden = !showPrompt;
+        const deciding = !!(s.extraction && s.extraction.decision > 0);
+        const showPrompt = surface && o.client && prompt && !deciding;
+        // Standing in someone else's ring: say whose job it is, quietly (docs/TEAM-V3.md item 5).
+        const theirs = !showPrompt && surface && o.client && me && !deciding && !s.over ? theirsHint(s, me) : '';
+        promptEl.hidden = !showPrompt && !theirs;
+        promptEl.classList.toggle('theirs', !showPrompt && !!theirs);
         if (showPrompt) {
           const html = promptHtml(prompt, o);
           if (promptEl.dataset.p !== prompt + (o.shooter ? 1 : 0)) {
             promptEl.dataset.p = prompt + (o.shooter ? 1 : 0);
             promptEl.innerHTML = html;
           }
+        } else if (theirs && promptEl.dataset.p !== 'h:' + theirs) {
+          promptEl.dataset.p = 'h:' + theirs;
+          promptEl.textContent = theirs;
         }
 
         // Landing readout.
@@ -1388,6 +1662,19 @@
       },
     };
 
+    function theirsHint(s, me) {
+      const S = team.surface;
+      if (!S || !S.canDo || !s.jobs || me.aboard || me.returning) return '';
+      const near = (e, r) => Math.hypot(e.x - me.x, e.z - me.z) < r;
+      const site = s.entities.find((e) => e.kind === 'site' && !e.done && near(e, e.r || 6));
+      if (site && !S.canDo(s, me.playerId, 'scan')) return t('team.surface.theirs.scan', '{name} scans the science sites: your job is elsewhere', { name: nameOfJob(s, 'scientist') });
+      const dish = s.entities.find((e) => e.kind === 'dish');
+      if (dish && near(dish, 4.5) && (!dish.planted || dish.align < 0.99) && !S.canDo(s, me.playerId, 'plant')) return t('team.surface.theirs.dish', '{name} plants and aims the dish', { name: nameOfJob(s, 'comms') });
+      const f = (s.faults || []).find((x) => near(x, 2.8));
+      if (f && !S.canDo(s, me.playerId, 'repair')) return t('team.surface.theirs.repair', '{name} fixes the lander', { name: nameOfJob(s, 'engineer') });
+      return '';
+    }
+
     function promptHtml(p, o) {
       const key = (k) => `<kbd class="ts-key">${esc(k)}</kbd>`;
       const own = o.shooter ? key('E') : key('E');
@@ -1406,6 +1693,8 @@
           return esc(t('team.surface.p.deliver', 'Walk into the lander ring to load it')) + ` · ${tap(t('team.surface.p.drop', 'to set it down'))}`;
         case 'needs_instrument':
           return esc(t('team.surface.p.noInstrument', 'None of your instruments can read this site'));
+        case 'repair':
+          return hold(t('team.surface.p.repair', 'to fix it'));
         case 'shelter':
           return esc(t('team.surface.p.shelter', 'Radiation: get to the lander'));
         case 'returning':
@@ -1441,7 +1730,18 @@
         box.querySelector('.ka-line').textContent = n ? t('team.surface.ascent.left', '{n} thrown overboard', { n: ltr(n) }) : t('team.surface.ascent.all', 'Nothing left behind');
         return;
       }
-      if (!showAscent) return;
+      // Only the scientist and the planner choose what stays (docs/TEAM-V3.md item 5).
+      const S = team.surface;
+      const me = meOf(s, o);
+      const canChoose = !(o.client && me && S && S.canDo && s.jobs && !S.canDo(s, me.playerId, 'choose'));
+      const wait = $('.tv-choosing');
+      wait.hidden = !(showAscent && deciding && !canChoose);
+      if (!wait.hidden) {
+        $('.tv-choosing-title').textContent = t('team.surface.choosing', 'Too heavy for the ascent');
+        $('.tv-choosing-sub').textContent = t('team.surface.choosingSub', '{who} are choosing what stays behind: {n} s', { who: choosersOf(s), n: ltr(Math.ceil(decision)) });
+      }
+      if (showAscent && !canChoose) box.hidden = true;
+      if (!showAscent || !canChoose) return;
       const objective = (s.loadout && s.loadout.objective) || null;
       chooser.update({ items: A.rack.map((x) => ({ id: x.id, kind: x.siteKind, kg: x.massKg, value: x.value })), liftKg: A.liftKg, objective }, decision);
     }
@@ -1460,7 +1760,7 @@
         return;
       }
       const prefs = coachPref();
-      if (coachStep === null) coachStep = prefs && prefs.get && prefs.get('surfaceCoach2', '') === '1' ? -1 : 0;
+      if (coachStep === null) coachStep = prefs && prefs.get && prefs.get('surfaceCoach3', '') === '1' ? -1 : 0;
       if (coachStep === -1) {
         box.hidden = true;
         return;
@@ -1480,13 +1780,30 @@
         html = usesPhones ? esc(t('team.surface.coach.movePhone', 'The stick walks your astronaut')) : `${key('W')}${key('A')}${key('S')}${key('D')} ${esc(t('team.surface.coach.move', 'walk'))}${o.shooter ? ` · ${esc(t('team.surface.coach.look', 'mouse looks around'))}` : ''}`;
         done = Math.hypot(me.x - coachFrom.x, me.z - coachFrom.z) > 2.2 || elapsed > 10;
       } else {
-        html = usesPhones ? esc(t('team.surface.coach.usePhone', 'Stand in a glowing ring and hold USE to scan it')) : `${esc(t('team.surface.coach.use', 'Stand in a glowing ring and hold'))} ${key('E')} ${esc(t('team.surface.coach.toScan', 'to scan it'))}`;
-        done = (me.useKind === 'scan' && me.useT > 0.3) || elapsed > 18;
+        // The second line teaches your own job (docs/TEAM-V3.md item 5).
+        const job = s.jobs ? me.role : 'scientist';
+        const U = usesPhones ? t('team.surface.useBtn', 'USE') : null;
+        const Q = usesPhones ? t('team.surface.abilityBtn', 'the ability button') : null;
+        const k = (txt, kk) => (usesPhones ? esc(txt) : esc(txt).split('{key}').join(key(kk)));
+        if (job === 'comms') {
+          html = k(t('team.surface.coach.comms', 'Your job: walk to the folded dish by the lander and hold {key} to plant it', { key: usesPhones ? U : '{key}' }), 'E');
+          done = me.useKind === 'plant' || me.useKind === 'align' || elapsed > 16;
+        } else if (job === 'engineer') {
+          html = k(t('team.surface.coach.engineer', 'Your job: an amber light on the lander is a fault: hold {key} there to fix it. Patch worn suits with Q.', { key: usesPhones ? U : '{key}' }), 'E');
+          if (usesPhones) html = esc(t('team.surface.coach.engineerPhone', 'Your job: an amber light on the lander is a fault: hold USE there to fix it. The ability button patches worn suits.'));
+          done = me.useKind === 'repair' || elapsed > 12;
+        } else if (job === 'planner') {
+          html = k(t('team.surface.coach.planner', 'Your job: face a site and tap {key} to send the scientist there; hold {key} to call everyone home', { key: usesPhones ? Q : '{key}' }), 'Q');
+          done = elapsed > 12;
+        } else {
+          html = usesPhones ? esc(t('team.surface.coach.usePhone', 'Stand in a glowing ring and hold USE to scan it')) : `${esc(t('team.surface.coach.use', 'Stand in a glowing ring and hold'))} ${key('E')} ${esc(t('team.surface.coach.toScan', 'to scan it'))}`;
+          done = (me.useKind === 'scan' && me.useT > 0.3) || elapsed > 18;
+        }
       }
       if (done) {
         coachStep = coachStep >= 1 ? -1 : coachStep + 1;
         coachFrom = null;
-        if (coachStep === -1 && prefs && prefs.set) prefs.set('surfaceCoach2', '1');
+        if (coachStep === -1 && prefs && prefs.set) prefs.set('surfaceCoach3', '1');
         if (coachStep === -1) box.hidden = true;
         return;
       }
@@ -1530,6 +1847,15 @@
           return [t('team.surface.n.o2Out', 'The lander is out of spare oxygen'), 'warn', 3200];
         case 'extractionCalled':
           return [t('team.surface.n.call', 'Time to go home: everyone to the lander'), 'info', 3200];
+        case 'fault': {
+          const mineJob = me && me.role === 'engineer';
+          const what = ev.kind === 'charger' ? t('team.surface.n.faultCharger', 'Lander fault: the suit charger tripped') : t('team.surface.n.faultPanels', 'Lander fault: dust on the solar panels');
+          return [mineJob || !o.client ? what : `${what} (${t('team.surface.n.faultWho', '{name} fixes it', { name: nameOfJob(s, 'engineer') })})`, 'info', 3400];
+        }
+        case 'faultFixed':
+          return [ev.kind === 'charger' ? t('team.surface.n.fixedCharger', 'Suit charger back on') : t('team.surface.n.fixedPanels', 'Solar panels clean again'), 'good', 2200];
+        case 'ping':
+          return ev.site ? [t('team.surface.n.route', 'Next site marked for {name}', { name: nameOfJob(s, 'scientist') }), 'info', 2200] : null;
         default:
           return null;
       }
@@ -1587,7 +1913,9 @@
         tag.style.visibility = p.onScreen ? 'visible' : 'hidden';
         tag.style.transform = `translate(calc(${p.x.toFixed(1)}px - 50%), ${(p.y - 26).toFixed(1)}px)`;
         const name = tag.firstChild;
-        if (name.textContent !== e.name) name.textContent = e.name;
+        // The character's name, and the person playing it when it is someone else (item 6).
+        const label = e.playerName && !(o.client && e.playerId === o.myId) && !e.isBot ? `${e.name} · ${e.playerName}` : e.name;
+        if (name.textContent !== label) name.textContent = label;
         tag.classList.toggle('me', o.client ? e.playerId === o.myId : !e.isBot);
         // On a shared screen, people see what Use does for them above their own heads.
         const prompt = !o.client && !e.isBot && s.prompts ? s.prompts[e.playerId] : null;
@@ -1598,7 +1926,7 @@
     }
 
     function promptShort(p) {
-      const words = { scan: 'Hold to scan', plant: 'Hold to plant', align: 'Hold to align', pickup: 'Pick up', deliver: 'To the lander', needs_instrument: 'No instrument fits', shelter: 'Shelter!', returning: 'Walking back', rest: 'Resting' };
+      const words = { scan: 'Hold to scan', plant: 'Hold to plant', align: 'Hold to align', pickup: 'Pick up', deliver: 'To the lander', needs_instrument: 'No instrument fits', shelter: 'Shelter!', returning: 'Walking back', rest: 'Resting', repair: 'Hold to fix' };
       return words[p] ? t('team.surface.prompt.' + p, words[p]) : '';
     }
   }

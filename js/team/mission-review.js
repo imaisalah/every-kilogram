@@ -105,7 +105,9 @@
         keys: ['requirement'],
       },
     ];
-    if (summary && summary.samplesHome != null) list[3].lines.push({ label: T('team.rev.l.samples', 'Samples home'), value: String(summary.samplesHome) });
+    // Samples that really came home: none when the crew was stranded (docs/TEAM-V3.md item 12).
+    const home = summary ? (summary.samples && Number.isFinite(summary.samples.returned) ? (summary.extracted === false ? 0 : summary.samples.returned) : summary.samplesHome) : null;
+    if (home != null) list[3].lines.push({ label: T('team.rev.l.samples', 'Samples home'), value: String(home) });
     return list;
   }
 
@@ -206,8 +208,12 @@
     const ops = out.find((p) => p.id === 'ops');
     if (ops && Number.isFinite(r.lifeDays)) ops.note = T('team.rev.con.days', '{n} days of science', { n: fmt(r.lifeDays) });
     if (r.crisesTotal != null) out.push({ id: 'problems', label: T('team.rev.con.crises', 'Problems fixed {a} of {b}', { a: r.crisesFixed || 0, b: r.crisesTotal }) });
-    if (summary) out.push({ id: 'surface', label: T('team.rev.con.surface', 'Landing and surface work') });
-    if (ascent) out.push({ id: 'ascent', label: T('team.rev.con.ascent', 'Ascent with samples') });
+    if (summary) {
+      const res = summary.result;
+      const note = res === 'stranded' ? T('team.rev.con.stranded', 'Stranded: the ascent window closed') : res === 'success' ? T('team.rev.con.surfaceOk', 'Every surface goal met') : res === 'partial' ? T('team.rev.con.surfacePart', 'Some surface goals missed') : '';
+      out.push({ id: 'surface', label: T('team.rev.con.surface', 'Landing and surface work'), note });
+    }
+    if (ascent && !(summary && summary.extracted === false)) out.push({ id: 'ascent', label: T('team.rev.con.ascent', 'Ascent with samples') });
     out.push({ id: 'end', label: r.alive === false ? T('team.rev.con.lost', 'Mission lost') : T('team.rev.con.end', 'End of mission') });
     return out;
   }

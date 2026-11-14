@@ -536,7 +536,7 @@
       $('.ka-title').textContent = deciding ? t('team.surface.ascent.too', 'Too heavy to lift off') : total > R.liftKg + 0.5 ? t('team.surface.ascent.heavy', 'Too heavy to lift') : t('team.surface.ascent.ok', 'The samples fit');
       $('.ka-count').textContent = deciding ? t('team.surface.ascent.secs', '{n} s', { n: ltr(Math.ceil(last.decision)) }) : '';
       $('.ka-line').textContent = deciding
-        ? t('team.surface.ascent.plan', 'KILO kept the best science per kilogram. Change it with − and +, then lift off.')
+        ? t('team.surface.ascent.plan', '{guide} kept the best science per kilogram. Change it with − and +, then lift off.', { guide: guideName() })
         : total > R.liftKg + 0.5
           ? t('team.surface.ascent.later', '{n} kg too heavy. You choose what stays when you reach the lander.', { n: ltr(Math.ceil(total - R.liftKg)) })
           : '';
@@ -814,6 +814,15 @@
   kit.crewById = crewById;
 
   const guide = () => (team.guide && typeof team.guide.say === 'function' ? team.guide : null);
+  // The chosen guide's name (KILO, BRACE, Dr. Praline or CAIRN).
+  function guideName() {
+    try {
+      return (team.guide && typeof team.guide.name === 'function' && team.guide.name()) || 'KILO';
+    } catch (e) {
+      return 'KILO';
+    }
+  }
+  kit.guideName = guideName;
   function kiloLines(mission, moment, params) {
     const g = guide();
     if (!g || !g.scriptFor) return [];
@@ -864,9 +873,20 @@
       const st = stepsOf(v)[v.buildStep];
       return !!st && myRoles(v).indexOf(st.role) >= 0;
     }
-    return (v.phase === 'questions' || v.phase === 'lock') && !!v.me;
+    return (v.phase === 'questions' || v.phase === 'define' || v.phase === 'lock') && !!v.me;
   }
   kit.canSteer = canSteer;
+  // Solo (TEAM-V3 item 2): the player's own job, or null when they build every step.
+  const soloJob = (v) => (v && v.mode === 'solo' && v.soloJob) || null;
+  // Is this build step the viewer's to pick?
+  function ownsStep(v, st) {
+    if (!st) return false;
+    const job = soloJob(v);
+    if (job) return st.role === job;
+    return isLocalView(v) || myRoles(v).indexOf(st.role) >= 0;
+  }
+  kit.soloJob = soloJob;
+  kit.ownsStep = ownsStep;
 
   // ---------- The mission tracker ----------
   const STAGES = ['crew', 'destination', 'questions', 'build', 'launch', 'flight', 'surface', 'home'];
@@ -907,6 +927,8 @@
       }
       case 'questions':
         return { stage: 'questions', sub: 0.5 };
+      case 'define':
+        return { stage: 'questions', sub: 0.85 };
       case 'lock':
         return { stage: 'launch', sub: 0.3 };
       case 'cabin':
@@ -965,7 +987,7 @@
   }
 
   // ---------- Pause: Resume, Back one step, Restart mission, Quit to title ----------
-  const BACK_PHASES = { lobby: 1, brief: 1, design: 1, questions: 1, lock: 1 };
+  const BACK_PHASES = { lobby: 1, brief: 1, design: 1, questions: 1, define: 1, lock: 1 };
   function pauseHTML() {
     return `<div class="ts-pause" role="dialog" aria-modal="true" aria-labelledby="ts-pause-h" data-pausebox hidden>
       <div class="ts-pause-card">
@@ -1219,11 +1241,13 @@
           body = `${eyebrow}<h1>${esc(t('team.v2.room.h', 'Invite your crew'))}</h1>
             <p class="ts-lede">${esc(mode === 'devices' ? t('team.lobby.share', 'Send this link to your crew') : t('team.lobby.joinat', 'Scan, or go to'))}</p>
             <div class="ts-roomcard"><div class="ts-qr-box" data-qr></div><div class="ts-room-txt"><span class="ts-join-url" data-url dir="ltr"></span><button type="button" class="ts-btn small" data-copy hidden>${esc(t('team.lobby.copy', 'Copy link'))}</button><small>${esc(t('team.lobby.code', 'Room code'))}</small><b class="ts-code" dir="ltr" data-code>····</b></div></div>
-            <ul class="ts-people" data-people></ul><div class="ts-conn" data-conn role="status"></div>`;
+            <ul class="ts-people" data-people></ul><div class="ts-conn" data-conn role="status"></div><div data-netcheck></div>`;
         } else if (step === 'difficulty') {
           const diffs = sim.difficulties().filter((d) => d.id !== 'sandbox');
           body = `${eyebrow}<h1>${esc(t('team.v2.diff.h', 'How hard should it be?'))}</h1>
-            <div class="ts-choices three">${diffs.map((d) => `<button type="button" class="ts-choice" data-diff="${esc(d.id)}"><b>${esc(d.title)}</b><span>${esc(t('team.v2.diff.' + d.id, ({ cadet: 'Fewer parts, more money. A good first flight.', engineer: 'The real trade-offs.', director: 'Tight money, hidden flaws, and a soft clock.' })[d.id] || d.note))}</span></button>`).join('')}</div>`;
+            <div class="ts-choices three">${diffs.map((d) => `<button type="button" class="ts-choice" data-diff="${esc(d.id)}"><b>${esc(d.title)}</b><span>${esc(t('team.v2.diff.' + d.id, ({ cadet: 'Fewer parts, more money. A good first flight.', engineer: 'The real trade-offs.', director: 'Tight money, hidden flaws, and a soft clock.' })[d.id] || d.note))}</span>${d.cml ? `<span class="ts-cml"><em>${esc(d.cml.label)}</em> ${esc(d.cml.name)}</span><small class="ts-cml-what">${esc(d.cml.what)}</small>` : ''}</button>`).join('')}</div>
+            <p class="ts-cml-note">${esc(t('team.v3.cml.note', 'Concept maturity (after JPL’s Concept Maturity Levels): the harder the level, the more detail every part shows.'))}</p>
+            <div class="ts-guidepick" data-guidepick></div>`;
         } else if (step === 'crew') {
           body = `${eyebrow}<h1>${esc(isNet ? t('team.v2.crew.hnet', 'Who will you be?') : t('team.v2.crew.h', 'Pick your astronaut'))}</h1>
             <p class="ts-lede">${esc(isNet ? t('team.v2.crew.subnet', 'Each player picks one. Their job is the part of the ship they build.') : t('team.v2.crew.sub', 'The other three fly with you. Your job is the part of the ship you know best.'))}</p>
@@ -1237,7 +1261,8 @@
                   <em class="ts-person-who" data-who></em>
                 </button>`
               )
-              .join('')}</div>`;
+              .join('')}${customCard()}</div>
+            <p class="ts-crew-job" data-jobline></p>`;
         } else {
           body = `${eyebrow}<h1>${esc(t('team.v2.dest.h', 'Where are we going?'))}</h1>
             <div class="ts-worlds2">${sim
@@ -1250,11 +1275,83 @@
               )
               .join('')}</div>`;
         }
+        if (picker && picker.destroy) picker.destroy();
+        picker = null;
+        if (ncPanel && ncPanel.destroy) ncPanel.destroy();
+        ncPanel = null;
         el.innerHTML = pageHTML(`ts-lobby2 ts-step-${step}`, body);
         el.querySelector('.ts-v2-body').classList.toggle('wide', step === 'destination' || step === 'crew');
         qrFor = null;
+        const gp = el.querySelector('[data-guidepick]');
+        const G = team.guide;
+        if (gp && G && typeof G.picker === 'function') {
+          try {
+            picker = G.picker(gp, { compact: true });
+          } catch (e) {
+            picker = null;
+          }
+        }
+      }
+      let picker = null;
+      let ncPanel = null;
+      // The fifth card: create your own astronaut (crew.openCreator), or your saved one.
+      function customCard() {
+        const C = team.crew;
+        if (!C || typeof C.canCreate !== 'function' || !C.canCreate()) return '';
+        let mine = null;
+        try {
+          mine = typeof C.custom === 'function' ? C.custom() : null;
+        } catch (e) {}
+        if (mine && mine.id) {
+          return `<button type="button" class="ts-person ts-person-own" data-crew="${esc(mine.id)}" data-job="${esc(mine.job)}">
+            <span class="ts-person-face">${crewFace(mine, 112)}</span>
+            <b>${esc(mine.name || '')}</b>
+            <span class="ts-person-job"><i class="ts-dot" style="background:var(--role-${esc(mine.job)})"></i>${esc(jobName(mine.job))}</span>
+            <small>${esc(t('team.v3.crew.yours', 'Your own astronaut.'))}</small>
+            <em class="ts-person-who" data-who></em>
+            <span class="ts-link" data-edit-own role="link">${esc(t('team.v3.crew.edit', 'Edit'))}</span>
+          </button>`;
+        }
+        return `<button type="button" class="ts-person ts-person-new" data-create-own>
+          <span class="ts-person-face ts-person-plus" aria-hidden="true"><svg viewBox="0 0 96 96" width="112" height="112"><circle cx="48" cy="48" r="46" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="6 6"/><path d="M48 30v36M30 48h36" stroke="currentColor" stroke-width="4" stroke-linecap="round"/></svg></span>
+          <b>${esc(t('team.v3.crew.create', 'Create your own'))}</b>
+          <small>${esc(t('team.v3.crew.createsub', 'Your name, your look, your job.'))}</small>
+        </button>`;
+      }
+      function openCreator() {
+        const C = team.crew;
+        if (!C || typeof C.openCreator !== 'function') return;
+        const v = ctx.view || {};
+        const me = (v.crewPick || {})[isLocalView(v) ? 'local' : v.me && v.me.id];
+        const cur = me ? crewById(me) || (C.byId ? C.byId(me) : null) : null;
+        try {
+          C.openCreator({
+            job: cur ? cur.job : undefined,
+            onDone(m) {
+              if (!m || !m.id) return;
+              ctx.send({ type: 'setRole', role: m.job, crew: m.id });
+              try {
+                prefs.set('crew', m.id);
+              } catch (err) {}
+              shown = null;
+              draw();
+            },
+            onCancel() {},
+          });
+        } catch (e) {
+          console.warn('creator', e);
+        }
       }
       function drawRoom(v) {
+        // "Can your friends reach you?" (js/team/netcheck.js), once per room page.
+        const ncEl = el.querySelector('[data-netcheck]');
+        if (team.netcheck && ncEl && !ncPanel) {
+          try {
+            ncPanel = team.netcheck.mount(ncEl, { auto: /^(localhost|127\.|\[?::1)/.test(location.hostname) || location.protocol === 'file:' });
+          } catch (e) {
+            ncPanel = null;
+          }
+        }
         const session = ctx.session || {};
         const code = session.code || v.code || null;
         const codeEl = el.querySelector('[data-code]');
@@ -1327,6 +1424,16 @@
             b.disabled = taken || (!v.me && !isLocalView(v));
             b.querySelector('[data-who]').textContent = mine ? t('team.v2.crew.you', 'You') : taken ? names[by] || '' : '';
           });
+          // Solo: say plainly which parts are yours and who builds the rest.
+          const jl = el.querySelector('[data-jobline]');
+          const myPick = picks[isLocalView(v) ? 'local' : meId];
+          const myMember = myPick ? crewById(myPick) || (team.crew && team.crew.byId ? team.crew.byId(myPick) : null) : null;
+          if (jl) {
+            if (v.mode === 'solo' && myMember) {
+              const others = crewList().filter((m) => m.job !== myMember.job).map((m) => m.short || String(m.name).split(' ')[0]);
+              jl.textContent = t('team.v3.crew.jobline', 'You build the {job} parts. {names} build the rest, and you can suggest changes.', { job: jobName(myMember.job), names: others.join(', ') });
+            } else jl.textContent = '';
+          }
           if (isLocalView(v) && !picks.local) msg = t('team.v2.crew.pickone', 'Pick one to continue.');
           ok = !isLocalView(v) || !!picks.local;
         } else {
@@ -1339,7 +1446,7 @@
           hideBack: !steer && !first,
           hideNext: !steer,
           backLabel: first ? t('team.v2.totitle', 'Title') : t('team.back', 'Back'),
-          nextLabel: step === 'destination' ? t('team.v2.tobrief', 'Meet KILO') : t('team.v2.next', 'Next'),
+          nextLabel: step === 'destination' ? t('team.v2.tobrief', 'Meet {guide}', { guide: guideName() }) : t('team.v2.next', 'Next'),
           msg,
         });
         showError(v);
@@ -1353,6 +1460,13 @@
           kit.sfx.pick();
           prefs.set('difficulty', b.dataset.diff);
           ctx.send({ type: 'setup', difficulty: b.dataset.diff });
+        } else if (b.dataset.createOwn !== undefined) {
+          kit.sfx.tap();
+          openCreator();
+        } else if (b.dataset.crew && e.target.closest('[data-edit-own]')) {
+          kit.sfx.tap();
+          ctx.send({ type: 'setRole', role: b.dataset.job, crew: b.dataset.crew });
+          openCreator();
         } else if (b.dataset.crew) {
           kit.sfx.pick();
           ctx.send({ type: 'setRole', role: b.dataset.job, crew: b.dataset.crew });
@@ -1376,7 +1490,13 @@
         }
       });
       draw();
-      return { update: draw, cleanup() {} };
+      return {
+        update: draw,
+        cleanup() {
+          if (picker && picker.destroy) picker.destroy();
+          if (ncPanel && ncPanel.destroy) ncPanel.destroy();
+        },
+      };
     },
   };
 
@@ -1425,7 +1545,9 @@
   };
 
   // ---------- The build: one component per step ----------
-  const NUM_ORDER = ['powerOutW', 'liftKg', 'fuelKg', 'years', 'massKg', 'powerW', 'dataGb', 'costM'];
+  // Every part card shows its numbers on every difficulty (TEAM-V3 item 22): cost always.
+  const NUM_ORDER = ['powerOutW', 'liftKg', 'fuelKg', 'years', 'massKg', 'powerW', 'dataGb', 'sciPct', 'costM'];
+  const LOCK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" width="12" height="12"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
   function numsHTML(nums, stepId) {
     const label = {
       massKg: t('team.num.mass', 'Mass'),
@@ -1436,22 +1558,25 @@
       liftKg: stepId === 'landing' ? t('team.num.home', 'Brings home') : t('team.num.lifts', 'Lifts'),
       years: t('team.num.length', 'Length'),
       dataGb: t('team.num.data', 'Data'),
+      sciPct: t('team.num.sci', 'Science'),
     };
     const val = (k, x) => {
-      if (k === 'costM') return ltr(`$${kit.fmt(x, x < 10 && x % 1 ? 1 : 0)}M`);
+      if (k === 'costM') return Math.abs(x) < 1 && x !== 0 ? ltr(`$${kit.fmt(x * 1000)}k`) : ltr(`$${kit.fmt(x, x < 10 && x % 1 ? 1 : 0)}M`);
+      if (k === 'sciPct') return ltr(`${kit.fmt(x)}%`);
       if (k === 'powerW' || k === 'powerOutW') return ltr(`${kit.fmt(x)} W`);
       if (k === 'years') return x === 1 ? t('team.num.year1', '1 year') : t('team.num.years', '{n} years', { n: x });
       if (k === 'dataGb') return ltr(`${kit.fmt(x, x < 10 && x % 1 ? 1 : 0)} Gb/d`);
       return ltr(`${kit.fmt(x, x < 10 && x % 1 ? 1 : 0)} kg`);
     };
     return NUM_ORDER.filter((k) => nums[k] != null && !(k === 'powerW' && !nums[k]))
-      .slice(0, 3)
+      .slice(0, 5)
       .map((k) => `<span><small>${esc(label[k])}</small><b>${esc(val(k, nums[k]))}</b></span>`)
       .join('');
   }
   const RES_EPS = { mass: 0.5, power: 0.5, budget: 0.5, data: 0.05, comms: 0.05, time: 0.05 };
   function resLine(id, x) {
-    const f = (n, d) => kit.fmt(n, d);
+    // Small (CubeSat) numbers keep a decimal or two.
+    const f = (n, d) => kit.fmt(n, d !== undefined ? d : Math.abs(n) < 10 && n % 1 ? (id === 'budget' ? 2 : 1) : Math.abs(n) < 50 && n % 1 ? 1 : 0);
     switch (id) {
       case 'mass':
         return x.limit ? t('team.res2.mass', '{v} of {l} kg the rocket lifts', { v: ltr(f(x.value)), l: ltr(f(x.limit)) }) : ltr(`${f(x.value)} kg`);
@@ -1499,6 +1624,37 @@
     return `<span class="ts-card-art rocket">${kit.rocketArt(o, tallest, v.design)}</span>`;
   }
 
+  // Concept maturity depth on the cards (TEAM-V3 item 4): Engineer shows real specs,
+  // Flight director adds the point-design detail (margins, backup, ageing, TRL, cost, verification).
+  function specHTML(list, cls) {
+    if (!list || !list.length) return '';
+    return `<dl class="${cls}">${list.map((x) => `<div${x.status ? ` data-status="${esc(x.status)}"` : ''}><dt>${esc(x.label)}</dt><dd dir="auto">${esc(x.value)}</dd></div>`).join('')}</dl>`;
+  }
+  const segName = (id) => {
+    try {
+      const s = (team.sim.segments() || []).find((x) => x.id === id);
+      return s ? s.title : id;
+    } catch (e) {
+      return id;
+    }
+  };
+  kit.segName = segName;
+  const SEG_ICON = {
+    launch: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 3 4 7 3 11h-6c-1-4 0-8 3-11zM9 14l-2 4h3M15 14l2 4h-3M11 18h2v3h-2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+    space: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3 10h5v4H3zM16 10h5v4h-5z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>',
+    ground: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9a7 7 0 0 0 10 6L5 9zM10 12l5-5M14 5l3 3M8 20h8M12 15v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    user: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  };
+  kit.SEG_ICON = SEG_ICON;
+  const segChip = (id) => `<span class="ts-seg" data-seg="${esc(id)}"><i>${SEG_ICON[id] || ''}</i>${esc(segName(id))}</span>`;
+  kit.segChip = segChip;
+  function cmlOf(v) {
+    try {
+      return team.sim.cml(v.difficulty);
+    } catch (e) {
+      return null;
+    }
+  }
   views.design = {
     mount(el, ctx) {
       const v0 = ctx.view;
@@ -1509,7 +1665,8 @@
         `<nav class="ts-stepbar" data-stepbar aria-label="${esc(t('team.v2.steps', 'Build steps'))}"></nav>
         <p class="ts-eyebrow" data-count></p>
         <h1 data-ask></h1>
-        <p class="ts-owner" data-owner hidden></p>
+        <p class="ts-step-meta" data-meta></p>
+        <div class="ts-owner" data-owner hidden></div>
         <div class="ts-build-grid">
           <section class="ts-build-main">
             <div class="ts-cards" data-cards></div>
@@ -1529,35 +1686,99 @@
       } catch (e) {}
       let shownStep = -1;
       let cardsSig = '';
+      let ownerSig = '';
       let lastPicks = '';
+      let lastReply = '';
       const showError = errorWatcher(el);
+      const job = soloJob(v0);
 
       function drawStepbar(v, steps) {
         const steer = canSteer(v) || local;
         q('[data-stepbar]').innerHTML = steps
-          .map((st, i) => `<button type="button" class="${i < v.buildStep ? 'done' : i === v.buildStep ? 'now' : ''}" data-goto="${i}" ${steer ? '' : 'disabled'}><i class="ts-dot" style="background:var(--role-${esc(st.role)})"></i><span>${esc(st.title)}</span></button>`)
+          .map((st, i) => {
+            const mine = !job || st.role === job;
+            const cls = [i < v.buildStep ? 'done' : i === v.buildStep ? 'now' : '', job ? (mine ? 'mine' : 'crew') : ''].join(' ');
+            return `<button type="button" class="${cls}" data-goto="${i}" ${steer ? '' : 'disabled'} title="${esc(segName(st.segment))}"><i class="ts-dot" style="background:var(--role-${esc(st.role)})"></i><span>${esc(st.title)}</span></button>`;
+          })
           .join('');
+      }
+      function drawMeta(v, st) {
+        const c = cmlOf(v);
+        let serves = '';
+        try {
+          const tr = ctx.sim.traceability(v.design);
+          const list = (tr.missionReqs || []).filter((m) => (st.serves || []).indexOf(m.id) >= 0);
+          if (list.length) serves = `<span class="ts-serves"><b>${esc(t('team.v3.serves', 'Serves'))}</b> ${list.map((m) => `<span title="${esc(m.text)}">${esc(m.id)}</span>`).join(' ')} <small>${esc(list[0].text)}</small></span>`;
+        } catch (e) {}
+        q('[data-meta]').innerHTML = `${segChip(st.segment)}${c ? `<span class="ts-cmlchip" title="${esc(c.what)}"><b>${esc(c.short)}</b> ${esc(c.name)}</span>` : ''}${serves}`;
+      }
+      function drawOwner(v, st) {
+        const box = q('[data-owner]');
+        const owner = ownsStep(v, st);
+        const note = (v.crewNotes || {})[st.id];
+        const sug = (v.suggestions || {})[st.id];
+        const sig = JSON.stringify([st.id, owner, note, sug, v.roles && v.roles[st.role], SMD.lang ? SMD.lang() : '']);
+        if (sig === ownerSig) return;
+        ownerSig = sig;
+        const dot = `<i class="ts-dot" style="background:var(--role-${esc(st.role)})"></i>`;
+        if (job) {
+          // Solo: your step, or a crewmate's pick in their own words.
+          box.hidden = false;
+          if (owner) {
+            box.className = 'ts-owner';
+            box.innerHTML = `${dot}<span>${esc(t('team.v3.yourstep', 'Your part, as {job}. Your crewmates build the rest.', { job: jobName(st.role) }))}</span>`;
+            return;
+          }
+          const m = (note && note.crewId && crewById(note.crewId)) || crewList().find((x) => x.job === st.role);
+          const name = (m && (crewText(m, 'short') || String(crewText(m, 'name') || '').split(' ')[0])) || (note && note.name) || jobName(st.role);
+          box.className = 'ts-owner crew';
+          const reply = sug && sug.reply ? `<p class="ts-crew-reply ${sug.reply === 'ok' ? 'ok' : 'no'}"><b>${esc(name)}:</b> ${esc(sug.replyText || '')}</p>` : '';
+          box.innerHTML = `<span class="ts-owner-face">${m ? crewFace(m, 44) : ''}</span>
+            <div class="ts-owner-txt"><p class="ts-owner-who">${dot}${esc(t('team.v3.crewstep', '{name} ({job}) picks this part.', { name, job: jobName(st.role) }))}</p>
+            ${note && note.text ? `<p class="ts-crew-line">“${esc(note.text)}”</p>` : ''}${reply}
+            <p class="ts-owner-hint">${esc(t('team.v3.suggesthint', 'Tap a card to suggest a change. {name} decides.', { name }))}</p></div>`;
+          return;
+        }
+        box.hidden = local;
+        box.className = 'ts-owner';
+        if (local) return;
+        const who = v.roles && v.roles[st.role];
+        box.innerHTML = owner
+          ? `${dot}${esc(t('team.v2.yourstep', 'Your step, as {job}. The crew can suggest.', { job: jobName(st.role) }))}`
+          : `${dot}${esc(t('team.v2.theirstep', '{name} picks this one ({job}). Tap a card to suggest it.', { name: who ? who.name : jobName(st.role), job: jobName(st.role) }))}`;
       }
       function drawCards(v, st) {
         const cards = ctx.sim.stepCards(v.design, st.id);
         const sug = (v.suggestions || {})[st.id];
-        const sig = JSON.stringify([st.id, cards.map((c) => [c.id, c.on, c.pros, c.cons, c.nums, c.flies]), sug, SMD.lang ? SMD.lang() : '']);
+        const sig = JSON.stringify([st.id, cards.map((c) => [c.id, c.on, c.pros, c.cons, c.nums, c.flies, c.locked, c.specs, c.detail]), sug, SMD.lang ? SMD.lang() : '']);
         if (sig === cardsSig) return cards;
         cardsSig = sig;
-        const owner = local || myRoles(v).indexOf(st.role) >= 0;
+        const owner = ownsStep(v, st);
         q('[data-cards]').className = `ts-cards n${cards.length}`;
         q('[data-cards]').innerHTML = cards
-          .map(
-            (c) => `<button type="button" class="ts-card ${c.on ? 'on' : ''} ${c.flies ? '' : 'nofly'}" data-opt="${esc(c.id)}" aria-pressed="${c.on}">
+          .map((c) => {
+            const locked = c.locked && !c.on;
+            const act = locked
+              ? ''
+              : !owner
+                ? `<span class="ts-card-act">${esc(t('team.v2.suggest', 'Suggest'))}</span>`
+                : st.multi && !c.on
+                  ? `<span class="ts-card-act">${esc(t('team.v2.card.add', 'Add'))}</span>`
+                  : st.multi
+                    ? `<span class="ts-card-act">${esc(t('team.v2.card.remove', 'Remove'))}</span>`
+                    : '';
+            const sugLine = sug && sug.option === c.id && !sug.reply ? `<span class="ts-card-sug">${esc(t('team.v2.suggests', '{name} suggests this', { name: sug.name || '' }))}</span>` : '';
+            return `<button type="button" class="ts-card ${c.on ? 'on' : ''} ${c.flies ? '' : 'nofly'} ${locked ? 'locked' : ''}" data-opt="${esc(c.id)}" aria-pressed="${c.on}" ${locked ? 'aria-disabled="true"' : ''}>
               ${cardArt(st.id, c.id, v, catalog)}
-              <span class="ts-card-top"><b class="ts-card-name" dir="auto">${esc(c.name)}</b>${c.on ? `<span class="ts-card-tag">${esc(st.multi ? t('team.v2.card.added', 'Added') : t('team.v2.card.fitted', 'Fitted'))}</span>` : ''}</span>
-              ${c.note ? `<span class="ts-card-note">${esc(c.note)}</span>` : ''}
+              <span class="ts-card-top"><b class="ts-card-name" dir="auto">${esc(c.name)}</b>${c.on ? `<span class="ts-card-tag">${esc(st.multi ? t('team.v2.card.added', 'Added') : t('team.v2.card.fitted', 'Fitted'))}</span>` : locked ? `<span class="ts-card-tag lock">${LOCK_ICON}${esc(t('team.v3.locked', 'Locked'))}</span>` : ''}</span>
+              ${locked ? `<span class="ts-card-lock">${esc(c.locked.reason)}</span>` : c.note ? `<span class="ts-card-note">${esc(c.note)}</span>` : ''}
               <ul class="ts-card-lines">${c.pros.map((x) => `<li class="pro"><i aria-hidden="true">✓</i>${esc(x)}</li>`).join('')}${c.cons.map((x) => `<li class="con"><i aria-hidden="true">✗</i>${esc(x)}</li>`).join('')}</ul>
-              <span class="ts-card-nums">${numsHTML(c.nums, st.id)}</span>
-              ${sug && sug.option === c.id ? `<span class="ts-card-sug">${esc(t('team.v2.suggests', '{name} suggests this', { name: sug.name || '' }))}</span>` : ''}
-              ${!owner ? `<span class="ts-card-act">${esc(t('team.v2.suggest', 'Suggest'))}</span>` : st.multi && !c.on ? `<span class="ts-card-act">${esc(t('team.v2.card.add', 'Add'))}</span>` : st.multi ? `<span class="ts-card-act">${esc(t('team.v2.card.remove', 'Remove'))}</span>` : ''}
-            </button>`
-          )
+              ${c.specs ? specHTML(c.specs, 'ts-card-specs') : `<span class="ts-card-nums">${numsHTML(c.nums, st.id)}</span>`}
+              ${c.detail ? specHTML(c.detail, 'ts-card-detail') : ''}
+              ${sugLine}
+              ${act}
+            </button>`;
+          })
           .join('');
         return cards;
       }
@@ -1565,7 +1786,7 @@
         const out = [];
         RES.forEach((r) => {
           const vals = cards.map((c) => c.resources && c.resources[r.id] && c.resources[r.id].value).filter((x) => Number.isFinite(x));
-          if (vals.length > 1 && Math.max(...vals) - Math.min(...vals) > RES_EPS[r.id]) out.push(r.id);
+          if (vals.length > 1 && Math.max(...vals) - Math.min(...vals) > (s.cubesat ? RES_EPS[r.id] / 50 : RES_EPS[r.id])) out.push(r.id);
         });
         const order = st.res.concat(RES.map((r) => r.id));
         const list = order.filter((id, i) => order.indexOf(id) === i && out.indexOf(id) >= 0).slice(0, 3);
@@ -1582,6 +1803,7 @@
         if (fresh) {
           shownStep = i;
           cardsSig = '';
+          ownerSig = '';
           drawStepbar(v, steps);
           q('[data-count]').textContent = t('team.v2.buildof', 'Part {n} of {m} · {name}', { n: i + 1, m: steps.length, name: st.title });
           let ask = st.ask;
@@ -1590,16 +1812,13 @@
           const moment = 'step.' + (STEP_MOMENT[st.id] || st.id);
           kiloSay(q('[data-kilo]'), kiloLines(s.id, moment), { inline: true, keep: true, auto: true, size: 64 });
         }
+        drawMeta(v, st);
         const cards = drawCards(v, st);
-        const owner = local || myRoles(v).indexOf(st.role) >= 0;
-        const ownerBox = q('[data-owner]');
-        ownerBox.hidden = local;
-        if (!local) {
-          const who = v.roles && v.roles[st.role];
-          ownerBox.innerHTML = owner
-            ? `<i class="ts-dot" style="background:var(--role-${esc(st.role)})"></i>${esc(t('team.v2.yourstep', 'Your step, as {job}. The crew can suggest.', { job: jobName(st.role) }))}`
-            : `<i class="ts-dot" style="background:var(--role-${esc(st.role)})"></i>${esc(t('team.v2.theirstep', '{name} picks this one ({job}). Tap a card to suggest it.', { name: who ? who.name : jobName(st.role), job: jobName(st.role) }))}`;
-        }
+        drawOwner(v, st);
+        const sug = (v.suggestions || {})[st.id];
+        const reply = sug && sug.reply ? `${st.id}|${sug.at}` : '';
+        if (reply && reply !== lastReply && lastReply !== '') (sug.reply === 'ok' ? kit.sfx.pick : kit.sfx.tap)();
+        lastReply = reply || lastReply || '-';
         const picks = JSON.stringify(v.design.picks);
         if (picks !== lastPicks) {
           if (lastPicks) kit.sfx.pick();
@@ -1613,7 +1832,7 @@
         const steer = canSteer(v);
         const last = i === steps.length - 1;
         let msg = '';
-        if (st.multi) {
+        if (st.multi && ownsStep(v, st)) {
           const n = (v.design.picks.instruments || []).length;
           msg = t('team.v2.fitted', '{n} of {m} fitted', { n, m: st.max });
         }
@@ -1627,7 +1846,7 @@
           next: steer,
           hideBack: !steer,
           hideNext: !steer,
-          backLabel: i === 0 ? t('team.v2.tobriefing', 'Briefing') : t('team.back', 'Back'),
+          backLabel: i === 0 ? t('team.v3.todefine', 'Mission definition') : t('team.back', 'Back'),
           nextLabel: last ? t('team.v2.toreview', 'Next: review and launch') : t('team.v2.nextstep', 'Next: {name}', { name: steps[i + 1].title }),
           msg,
         });
@@ -1640,8 +1859,11 @@
         const steps = stepsOf(v);
         const st = steps[v.buildStep];
         if (b.dataset.opt && st) {
-          const owner = local || myRoles(v).indexOf(st.role) >= 0;
-          if (owner) {
+          if (b.classList.contains('locked')) {
+            kit.sfx.tap();
+            return;
+          }
+          if (ownsStep(v, st)) {
             kit.sfx.tap();
             ctx.send({ type: 'build', step: st.id, option: b.dataset.opt });
           } else {
@@ -1664,6 +1886,72 @@
           kiloClear();
         },
       };
+    },
+  };
+
+  // ---------- Mission definition (TEAM-V3 item 3): the science traceability chain ----------
+  // Need -> goal -> objectives -> measurements -> mission requirements -> concept, in plain words.
+  views.define = {
+    mount(el, ctx) {
+      const s = sc(ctx);
+      el.innerHTML = pageHTML(
+        'ts-define',
+        `<p class="ts-eyebrow">${esc(t('team.v3.def.k', 'Mission definition'))} · ${segChip('user')}</p>
+        <h1>${esc(t('team.v3.def.h', 'From the science need to the spacecraft'))}</h1>
+        <p class="ts-lede">${esc(t('team.v3.def.lede', 'NASA plans every science mission as a chain: each link says why the next one is needed. Your build has to meet the mission requirements.'))}</p>
+        <ol class="ts-trace" data-trace></ol>`
+      );
+      el.querySelector('.ts-v2-body').classList.add('wide');
+      let sig = '';
+      const showError = errorWatcher(el);
+      function chain(v) {
+        let tr = null;
+        try {
+          tr = ctx.sim.traceability(v.design || { scenario: v.scenarioId, difficulty: v.difficulty, requirement: v.requirementId, picks: {} });
+        } catch (e) {}
+        if (!tr) return '';
+        const steps = stepsOf(v);
+        const stepName = (id) => (steps.find((x) => x.id === id) || {}).title;
+        const row = (n, key, label, body) => `<li class="ts-trace-row" data-k="${key}"><span class="ts-trace-n" aria-hidden="true">${n}</span><div class="ts-trace-k">${esc(label)}</div><div class="ts-trace-v">${body}</div></li>`;
+        const objs = tr.objectives
+          .map((o) => `<li class="${o.primary ? 'top' : ''}"><span class="ts-trace-w"><i style="inline-size:${Math.round(o.weight * 100)}%"></i></span><b dir="auto">${esc(o.title)}</b>${o.primary ? `<em>${esc(t('team.v3.def.top', 'Top priority'))}</em>` : ''}<small>${esc(t('team.v3.def.weight', '{n}% of success', { n: Math.round(o.weight * 100) }))}</small></li>`)
+          .join('');
+        const meas = tr.objectives
+          .filter((o) => o.weight > 0)
+          .map((o) => `<li><span dir="auto">${esc(o.measure)}</span>${o.instruments.length ? `<small>${esc(t('team.v3.def.with', 'With: {list}', { list: o.instruments.map((x) => x.name).join(', ') }))}</small>` : ''}</li>`)
+          .join('');
+        const mrs = tr.missionReqs
+          .map((m) => `<li><b>${esc(m.id)}</b><span dir="auto">${esc(m.text)}</span><small>${segChip(m.segment)} ${esc(m.steps.map(stepName).filter(Boolean).join(' · '))}</small></li>`)
+          .join('');
+        return [
+          row(1, 'need', t('team.v3.def.need', 'Science need'), `<p dir="auto">${esc(tr.need)}</p>`),
+          row(2, 'goal', t('team.v3.def.goal', 'Mission goal'), `<p dir="auto">${esc(tr.goal)}</p><p class="ts-trace-sub">${esc(t('team.v3.def.criterion', 'Success means: {name}. {text}', { name: tr.requirement.title, text: tr.requirement.text }))}</p>`),
+          row(3, 'objectives', t('team.v3.def.objectives', 'Science objectives'), `<ul class="ts-trace-objs">${objs}</ul>`),
+          row(4, 'measure', t('team.v3.def.measure', 'Measurement requirements'), `<ul class="ts-trace-list">${meas}</ul>`),
+          row(5, 'mr', t('team.v3.def.mr', 'Mission requirements'), `<ul class="ts-trace-mrs">${mrs}</ul>`),
+          row(6, 'concept', t('team.v3.def.concept', 'Mission concept'), `<p dir="auto">${esc(tr.concept)}</p>`),
+        ].join('');
+      }
+      function draw() {
+        const v = ctx.view;
+        if (!v) return;
+        const next = JSON.stringify([v.requirementId, v.scenarioId, v.difficulty, SMD.lang ? SMD.lang() : '']);
+        if (next !== sig) {
+          sig = next;
+          el.querySelector('[data-trace]').innerHTML = chain(v);
+        }
+        const steer = canSteer(v);
+        setFoot(el, { back: steer, next: steer, hideBack: !steer, hideNext: !steer, backLabel: t('team.v3.def.back', 'Success criterion'), nextLabel: t('team.v3.def.next', 'Start the build'), msg: steer ? '' : waitMsg(v) });
+        showError(v);
+      }
+      el.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-nav]');
+        if (!b || b.disabled) return;
+        kit.sfx.tap();
+        ctx.send({ type: b.dataset.nav === 'next' ? 'forward' : 'back' });
+      });
+      draw();
+      return { update: draw, cleanup() {} };
     },
   };
 
@@ -1701,7 +1989,7 @@
           lastSel = sel;
         }
         const steer = canSteer(v);
-        setFoot(el, { back: steer, next: steer, hideBack: !steer, hideNext: !steer, backLabel: t('team.v2.tobriefing', 'Back to briefing'), nextLabel: t('team.v2.tobuild', 'Start spacecraft design'), msg: steer ? '' : waitMsg(v) });
+        setFoot(el, { back: steer, next: steer, hideBack: !steer, hideNext: !steer, backLabel: t('team.v2.tobriefing', 'Back to briefing'), nextLabel: t('team.v3.tomission', 'Next: mission definition'), msg: steer ? '' : waitMsg(v) });
         showError(v);
       }
       el.addEventListener('click', (e) => {
@@ -1727,7 +2015,7 @@
 
   // ---------- Review and launch: one card, and a Fix it for anything that will not work ----------
   // Which build step fixes each check (sim.checks ids).
-  const FIX_STEP = { launcher: ['rocket'], power: ['power', 'batteries'], battery: ['batteries', 'power'], comms: ['radio'], recorder: ['recorder', 'radio'], instruments: ['instruments'], time: ['lifetime', 'instruments'], life: ['computer', 'lifetime', 'orbit'], budget: ['instruments', 'rocket'] };
+  const FIX_STEP = { launcher: ['rocket'], power: ['power', 'batteries'], battery: ['batteries', 'power'], comms: ['radio'], recorder: ['recorder', 'radio'], instruments: ['instruments'], time: ['lifetime', 'instruments'], life: ['computer', 'lifetime', 'orbit'], budget: ['instruments', 'rocket'], thermal: ['thermal'] };
   views.lock = {
     mount(el, ctx) {
       const s = sc(ctx);
@@ -1781,15 +2069,28 @@
           .join('');
         const bad = (v.checks || []).filter((c) => !c.ok);
         const hard = bad.filter((c) => c.hard);
-        q('[data-problems]').innerHTML = bad.length
-          ? bad
-              .slice(0, 3)
-              .map((c) => {
-                const i = stepIndexFor(c.id);
-                return `<p class="${c.hard ? 'hard' : ''}"><i aria-hidden="true">✗</i><span>${esc(c.text)}</span>${i >= 0 && steer ? `<button type="button" class="ts-btn small" data-goto="${i}">${esc(t('team.v2.fixit', 'Fix it'))}</button>` : ''}</p>`;
-              })
-              .join('') + (hard.length ? '' : `<p class="note">${esc(t('team.v2.mayfly', 'It can still fly. It might not go well.'))}</p>`)
-          : `<p class="ok"><i aria-hidden="true">✓</i><span>${esc(t('team.v2.allgood', 'Everything checks out.'))}</span></p>`;
+        // Verification (TEAM-V3 item 21): every requirement of the Mission definition,
+        // checked against this design, with the number that proves it and a jump to fix it.
+        let reqs = [];
+        try {
+          reqs = ctx.sim.requirementStatus(v.design) || [];
+        } catch (e) {}
+        const okN = reqs.filter((r) => r.met).length;
+        const hardHTML = hard
+          .map((c) => {
+            const i = stepIndexFor(c.id);
+            return `<p class="hard"><i aria-hidden="true">✗</i><span>${esc(c.text)}</span>${i >= 0 && steer ? `<button type="button" class="ts-btn small" data-goto="${i}">${esc(t('team.v2.fixit', 'Fix it'))}</button>` : ''}</p>`;
+          })
+          .join('');
+        const list = reqs
+          .map((r) => {
+            const i = r.fix ? steps.findIndex((x) => x.id === r.fix) : -1;
+            return `<li class="${r.met ? 'ok' : 'no'}"><i aria-hidden="true">${r.met ? '✓' : '✗'}</i><div><p><b>${esc(r.id)}</b> <span dir="auto">${esc(r.text)}</span></p><small dir="auto">${esc(r.proof || '')}${!r.met && r.why ? ` · ${esc(r.why)}` : ''}</small></div>${!r.met && i >= 0 && steer ? `<button type="button" class="ts-btn small" data-goto="${i}">${esc(t('team.v2.fixit', 'Fix it'))}</button>` : ''}</li>`;
+          })
+          .join('');
+        q('[data-problems]').innerHTML = `${hardHTML}<h2 class="ts-verify-h">${esc(t('team.v3.verify.h', 'Verification'))} <small>${esc(t('team.v3.verify.n', '{a} of {b} requirements verified', { a: okN, b: reqs.length }))}</small></h2><ul class="ts-verify">${list}</ul>${
+          hard.length ? '' : okN < reqs.length || bad.length ? `<p class="note">${esc(t('team.v3.verify.note', 'It can still fly. Requirements that are not verified cost points and might sink the mission.'))}</p>` : `<p class="ok"><i aria-hidden="true">✓</i><span>${esc(t('team.v2.allgood', 'Everything checks out.'))}</span></p>`
+        }`;
         q('[data-meters]').innerHTML = meterHTML(['mass', 'power', 'budget', 'data', 'comms', 'time'], v.resources);
         const humans = (v.players || []).filter((p) => !p.bot);
         const votes = v.votes || {};
@@ -1809,7 +2110,7 @@
           hideBack: !steer,
           next: !hard.length && !v.armed && !!v.me,
           nextLabel: v.armed ? t('team.lock.armed', 'Launching') : meReady && !isLocalView(v) ? t('team.v2.unready', 'Not ready yet') : t('team.v2.launch', 'Launch'),
-          backLabel: t('team.v2.toq', 'Questions'),
+          backLabel: t('team.v2.tolast', 'Last part'),
           msg: hard.length ? hard[0].text : !isLocalView(v) && meReady ? t('team.v2.waitall', 'Waiting for the whole crew to press Launch.') : '',
         });
         showError(v);

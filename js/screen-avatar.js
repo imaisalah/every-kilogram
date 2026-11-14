@@ -2,6 +2,12 @@
 // A 3D turntable of your astronaut, every appearance option, your rank and
 // badges, then on to params.next (default the HQ).
 //   SMD.go('avatar', { next: 'hq', nextParams: {...}, back: 'hq' })
+//
+// Crew mode (docs/TEAM-V3.md item 8): render(el, { mode: 'crew', crew: { name,
+// job, look }, onSave(d), onCancel() }) draws the same creator inside any element
+// (crew.openCreator puts it in an overlay above the team screen) for your own
+// astronaut in a mission: name, job, build, beard and the look, no career.
+// onSave gets { name, job, look }.
 (function () {
   const SMD = globalThis.SMD;
   const t = (k, e, p) => SMD.t(k, e, p);
@@ -19,10 +25,27 @@
   SMD.ui.screens.avatar = {
     render(app, params) {
       const A = SMD.avatar;
-      const ag = SMD.game.agency;
+      const crewMode = params.mode === 'crew';
+      const ag = crewMode ? null : SMD.game && SMD.game.agency;
       const editing = !!(ag && ag.avatar);
       const next = params.next || 'hq';
-      const st = A.get();
+      const C = SMD.team && SMD.team.crew;
+      const JOBS = ['planner', 'engineer', 'scientist', 'comms'];
+      // Crew mode keeps the job, build and beard next to the appearance.
+      const startCrew = crewMode ? params.crew || {} : null;
+      const st = crewMode ? Object.assign(A.normalize(Object.assign({}, startCrew.look || {}, { name: startCrew.name || '' })), crewExtras(startCrew)) : A.get();
+      if (crewMode && !startCrew.name) st.name = '';
+      function crewExtras(c) {
+        const look = c.look || {};
+        return {
+          job: JOBS.includes(c.job) ? c.job : 'planner',
+          body: look.body === 'f' || look.body === 'm' ? look.body : look.hair === 'bun' || look.hair === 'covered' ? 'f' : 'm',
+          beard: ['none', 'stubble', 'full'].includes(look.beard) ? look.beard : 'none',
+        };
+      }
+      // What the 3D model and the 2D fallback draw.
+      const look3d = () => (crewMode ? Object.assign({}, st, { name: st.name || ' ', beard: st.beard === 'none' ? null : st.beard, height: st.body === 'f' ? 1.67 : 1.78 }) : st);
+      const jobName = (j) => (C && C.jobName ? C.jobName(j) : j);
       const cleanups = [];
       let alive = true;
       let stage3d = null;
@@ -48,9 +71,10 @@
         const hairHidden = st.hair === 'covered' || st.hair === 'helmet';
         return `
           <div class="av-field">
-            <label for="av-name">${esc(t('avatar.name', 'Name on your suit'))}</label>
-            <input id="av-name" class="av-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" value="${esc(st.name)}" />
+            <label for="av-name">${esc(crewMode ? t('avatar.crew.name', 'Your astronaut’s name') : t('avatar.name', 'Name on your suit'))}</label>
+            <input id="av-name" class="av-input" type="text" maxlength="24" autocomplete="off" spellcheck="false" value="${esc(st.name)}"${crewMode ? ` placeholder="${esc(t('avatar.crew.namehint', 'Type a name'))}"` : ''} />
           </div>
+          ${crewMode ? crewFieldsHTML() : ''}
           <fieldset class="av-field" data-focus="body">
             <legend>${esc(t('avatar.suit', 'Suit'))}</legend>
             ${swatches('suit', A.SUITS, st.suit, (o) => ({ c: o.body, c2: o.accent }), t('avatar.suit', 'Suit'))}
@@ -75,10 +99,32 @@
           </fieldset>
           <fieldset class="av-field" data-focus="patch">
             <legend>${esc(t('avatar.patch', 'Shoulder patch'))}</legend>
-            ${seg('patch', A.PATCHES, st.patch, t('avatar.patch', 'Shoulder patch'))}
-            ${hasMission ? '' : `<span class="hint">${esc(t('avatar.patch.none', 'Your latest mission patch appears once a mission is approved.'))}</span>`}
+            ${crewMode ? '' : seg('patch', A.PATCHES, st.patch, t('avatar.patch', 'Shoulder patch'))}
+            ${hasMission || crewMode ? '' : `<span class="hint">${esc(t('avatar.patch.none', 'Your latest mission patch appears once a mission is approved.'))}</span>`}
             ${swatches('patchColor', A.PATCH_COLORS, st.patchColor, (o) => ({ c: o.id }), t('avatar.patchColor', 'Patch colour'))}
             ${st.hair === 'covered' ? `<span class="hint">${esc(t('avatar.patchColor.scarf', 'Your headscarf takes this colour too.'))}</span>` : ''}
+          </fieldset>`;
+      }
+
+      // Crew mode: the job (the part of the ship you build), the build and a beard.
+      function crewFieldsHTML() {
+        const jobs = JOBS.map(
+          (j) => `<button type="button" data-opt="job" data-value="${j}" aria-pressed="${st.job === j}"><i class="av-jobdot" style="background:var(--role-${j}, #93b4ff)" aria-hidden="true"></i><span>${esc(jobName(j))}</span></button>`
+        ).join('');
+        const BODIES = [{ id: 'm', name: () => t('avatar.crew.body.m', 'Broad') }, { id: 'f', name: () => t('avatar.crew.body.f', 'Slim') }];
+        const BEARDS = [{ id: 'none', name: () => t('avatar.crew.beard.none', 'None') }, { id: 'stubble', name: () => t('avatar.crew.beard.stubble', 'Stubble') }, { id: 'full', name: () => t('avatar.crew.beard.full', 'Full') }];
+        return `<fieldset class="av-field av-jobs" data-focus="body">
+            <legend>${esc(t('avatar.crew.job', 'Your job'))}</legend>
+            <div class="seg av-seg av-jobseg" role="group" aria-label="${esc(t('avatar.crew.job', 'Your job'))}">${jobs}</div>
+            <span class="hint">${esc(t('avatar.crew.jobhint', 'Your job is the part of the ship you build. The crewmate who usually does it stays on Earth this time.'))}</span>
+          </fieldset>
+          <fieldset class="av-field" data-focus="body">
+            <legend>${esc(t('avatar.crew.body', 'Build'))}</legend>
+            ${seg('body', BODIES, st.body, t('avatar.crew.body', 'Build'))}
+          </fieldset>
+          <fieldset class="av-field" data-focus="face">
+            <legend>${esc(t('avatar.crew.beard', 'Beard'))}</legend>
+            ${seg('beard', BEARDS, st.beard, t('avatar.crew.beard', 'Beard'))}
           </fieldset>`;
       }
 
@@ -105,12 +151,12 @@
           <ul class="av-badges">${badges}</ul>`;
       }
 
-      app.innerHTML = `<main class="screen day av">
+      app.innerHTML = `<main class="screen day av${crewMode ? ' av-crew' : ''}">
         <div class="av-wrap">
           <header class="av-head">
-            <p class="av-kicker">${esc(t('avatar.kicker', 'Agency director, and astronaut'))}</p>
-            <h1 class="display av-title">${esc(editing ? t('avatar.title.edit', 'Your astronaut') : t('avatar.title', 'Suit up'))}</h1>
-            <p class="av-lede">${esc(t('avatar.lede', 'You run the agency and you fly with it. This is you: walking the campus, standing beside every spacecraft you build, and watching every launch.'))}</p>
+            <p class="av-kicker">${esc(crewMode ? t('avatar.crew.kicker', 'Your astronaut') : t('avatar.kicker', 'Agency director, and astronaut'))}</p>
+            <h1 class="display av-title">${esc(crewMode ? t('avatar.crew.title', 'Create your astronaut') : editing ? t('avatar.title.edit', 'Your astronaut') : t('avatar.title', 'Suit up'))}</h1>
+            <p class="av-lede">${esc(crewMode ? t('avatar.crew.lede', 'Choose a name, a job and a look. You fly this mission with the other three.') : t('avatar.lede', 'You run the agency and you fly with it. This is you: walking the campus, standing beside every spacecraft you build, and watching every launch.'))}</p>
           </header>
           <section class="av-stage-wrap" aria-label="${esc(t('avatar.stage', 'Preview'))}">
             <div class="av-stage" data-stage tabindex="0" role="img" aria-label="${esc(t('avatar.stage.a', 'Your astronaut in 3D. Drag, or use the arrow keys, to turn it.'))}"></div>
@@ -123,12 +169,12 @@
             </div>
           </section>
           <form class="av-controls" novalidate data-controls></form>
-          <section class="av-career" aria-labelledby="av-rank-h" data-career></section>
+          ${crewMode ? '' : '<section class="av-career" aria-labelledby="av-rank-h" data-career></section>'}
           <div class="av-actions">
             <button type="button" class="btn ghost" data-act="random">${esc(t('avatar.random', 'Random'))}</button>
             <span class="av-actions-gap"></span>
-            ${editing || params.back ? `<button type="button" class="btn ghost" data-act="cancel">${esc(t('avatar.cancel', 'Cancel'))}</button>` : ''}
-            <button type="button" class="btn primary" data-act="confirm">${esc(next === 'hq' ? t('avatar.confirm.hq', 'Suit up and go to HQ') : t('avatar.confirm', 'Suit up'))}</button>
+            ${editing || params.back || crewMode ? `<button type="button" class="btn ghost" data-act="cancel">${esc(t('avatar.cancel', 'Cancel'))}</button>` : ''}
+            <button type="button" class="btn primary" data-act="confirm">${esc(crewMode ? t('avatar.crew.save', 'Save and fly as this astronaut') : next === 'hq' ? t('avatar.confirm.hq', 'Suit up and go to HQ') : t('avatar.confirm', 'Suit up'))}</button>
           </div>
         </div>
       </main>`;
@@ -148,14 +194,27 @@
         }
       }
       function paintCareer() {
-        career.innerHTML = careerHTML();
+        if (career) career.innerHTML = careerHTML();
       }
       function paintPlate() {
-        $('[data-pname]').textContent = st.name;
-        $('[data-prank]').textContent = A.evaluate(ag).rank.name;
+        $('[data-pname]').textContent = st.name || (crewMode ? t('avatar.crew.noname', 'Your astronaut') : '');
+        $('[data-prank]').textContent = crewMode ? jobName(st.job) : A.evaluate(ag).rank.name;
       }
       function paintFallback() {
         if (!fallback) return;
+        // Crew mode draws the same calm portrait as the crew cards.
+        if (crewMode && C && C.makeCustom) {
+          fallback.hidden = true;
+          let box = app.querySelector('[data-face2d]');
+          if (!box) {
+            box = document.createElement('div');
+            box.className = 'av-face2d';
+            box.dataset.face2d = '1';
+            fallback.after(box);
+          }
+          box.innerHTML = C.portrait(C.makeCustom(st.name, st.job, st), { size: 260 });
+          return;
+        }
         import(new URL('js/3d/astronaut.js', document.baseURI).href)
           .then((m) => m.drawPortrait2D(fallback, st))
           .catch(() => {});
@@ -165,8 +224,10 @@
       let helmetTimer = 0;
       function changed(opt) {
         Object.assign(st, A.normalize(st));
+        // normalize() fills an empty name with the default: crew mode keeps what was typed.
+        if (crewMode) st.name = (($('#av-name') || {}).value || '').trim();
         if (stage3d) {
-          stage3d.setAppearance(st);
+          stage3d.setAppearance(look3d());
           // Visor changes show the helmet for a moment even with the hair out.
           if (opt === 'visor' && st.hair !== 'helmet') {
             stage3d.astro.setHelmet(true);
@@ -196,11 +257,13 @@
       controls.addEventListener('input', (e) => {
         if (e.target.id !== 'av-name') return;
         st.name = e.target.value;
-        $('[data-pname]').textContent = e.target.value.trim() || A.default().name;
+        $('[data-pname]').textContent = e.target.value.trim() || (crewMode ? t('avatar.crew.noname', 'Your astronaut') : A.default().name);
+        e.target.removeAttribute('aria-invalid');
         clearTimeout(nameTimer);
         nameTimer = setTimeout(() => {
           if (!alive) return;
-          if (stage3d) stage3d.setAppearance(Object.assign({}, st));
+          if (stage3d) stage3d.setAppearance(Object.assign({}, look3d()));
+          if (crewMode) paintFallback();
         }, 250);
       });
       controls.addEventListener('focusin', (e) => {
@@ -232,6 +295,10 @@
         const act = b.dataset.act;
         if (act === 'random') {
           Object.assign(st, A.random(), { name: st.name });
+          if (crewMode) {
+            st.body = Math.random() < 0.5 ? 'f' : 'm';
+            st.beard = st.body === 'm' && Math.random() < 0.4 ? (Math.random() < 0.5 ? 'stubble' : 'full') : 'none';
+          }
           if (stage3d) {
             stage3d.focus('body');
             stage3d.astro.setHelmet(null);
@@ -239,6 +306,21 @@
           }
           changed('random');
           paintControls();
+        } else if (act === 'confirm' && crewMode) {
+          const nameNow = String(($('#av-name') || {}).value || st.name || '').trim();
+          if (!nameNow) {
+            const inp = $('#av-name');
+            if (inp) {
+              inp.focus();
+              inp.setAttribute('aria-invalid', 'true');
+            }
+            return;
+          }
+          if (SMD.audio && SMD.audio.chime) SMD.audio.chime(true);
+          const look = { suit: st.suit, skin: st.skin, hair: st.hair, hairColor: st.hairColor, visor: st.visor, patchColor: st.patchColor, body: st.body, beard: st.beard };
+          if (typeof params.onSave === 'function') params.onSave({ name: nameNow, job: st.job, look });
+        } else if (act === 'cancel' && crewMode) {
+          if (typeof params.onCancel === 'function') params.onCancel();
         } else if (act === 'confirm') {
           A.set(st);
           if (SMD.audio && SMD.audio.chime) SMD.audio.chime(true);
@@ -248,7 +330,7 @@
         }
       });
 
-      const offLang = SMD.bus ? SMD.bus.on('lang', () => SMD.go('avatar', params)) : null;
+      const offLang = SMD.bus && !crewMode ? SMD.bus.on('lang', () => SMD.go('avatar', params)) : null;
       if (offLang) cleanups.push(offLang);
 
       paintControls();
@@ -256,7 +338,11 @@
       paintPlate();
 
       // ---------- 3D turntable ----------
-      const E = SMD.three && SMD.three.engine;
+      // Crew mode opens over another screen: if a 3D scene is already running
+      // there, keep it and show the 2D portrait instead.
+      const E0 = SMD.three && SMD.three.engine;
+      const busy = crewMode && E0 && E0.debug && E0.debug.current;
+      const E = busy ? null : E0;
       const noGL = () => {
         fallback = $('[data-fallback]');
         fallback.hidden = false;
@@ -269,7 +355,7 @@
         import(new URL('js/3d/astronaut.js', document.baseURI).href)
           .then((m) => {
             if (!alive) return;
-            stage3d = m.createAvatarStage(st, { el: stage });
+            stage3d = m.createAvatarStage(look3d(), { el: stage });
             E.mount(stage, stage3d);
             // Say hello once it is on screen.
             if (!reduced) setTimeout(() => alive && stage3d && stage3d.act('wave'), 700);
@@ -283,7 +369,7 @@
       return () => {
         alive = false;
         cleanups.forEach((fn) => fn());
-        if (E) E.stop();
+        if (E && stage3d) E.stop();
         stage3d = null;
       };
     },

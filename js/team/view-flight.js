@@ -311,10 +311,10 @@
       root.querySelectorAll('[data-cast]').forEach((c) => c.classList.toggle('tf-on', c.dataset.cast === line.who));
       root.querySelectorAll('[data-seat]').forEach((c) => c.classList.toggle('tf-on', c.dataset.seat === line.who));
       if (line.who === 'kilo') {
-        nameEl.textContent = t('guide.name', 'KILO');
+        nameEl.textContent = guide && guide.name ? guide.name() : t('guide.name', 'KILO');
         jobEl.textContent = t('team.cabin.kilojob', 'Mission guide');
         faceEl.innerHTML = kiloFace(line.mood, true);
-        root.style.setProperty('--speaker', '#9ff3dc');
+        root.style.setProperty('--speaker', ({ brace: '#ffb24d', praline: '#e8a93a', cairn: '#7fe8d8' })[guide && guide.current ? guide.current() : 'kilo'] || '#9ff3dc');
       } else {
         const m = crew.byId(line.who);
         nameEl.textContent = crew.text(m, 'name');
@@ -505,6 +505,7 @@
           <div class="tf-day-wrap"><div class="tf-sunbadge" data-sunbadge><span class="tf-sunicon" aria-hidden="true"></span><span data-sunword></span></div><div class="tf-day" data-daybox hidden><span class="tf-day-num" data-day>0</span><span class="tf-day-of" data-dayof></span></div></div>
           <div class="tf-link" data-link><span class="tf-link-dot" aria-hidden="true"></span><span data-linkword>${esc(t('team.flight.nolinkyet', 'Waiting for contact'))}</span></div>
           ${ghostFrames ? `<div class="tf-ghost-chip"><span aria-hidden="true"></span>${esc(t('team.flight.ghost', 'Ghost: your last flight'))}</div>` : ''}
+          <button type="button" class="tf-vr" data-vr hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h13A2.5 2.5 0 0 1 21 8.5v6a2.5 2.5 0 0 1-2.5 2.5h-3.2l-1.6-2.4a2 2 0 0 0-3.4 0L8.7 17H5.5A2.5 2.5 0 0 1 3 14.5z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="8" cy="11.5" r="1.8" fill="currentColor"/><circle cx="16" cy="11.5" r="1.8" fill="currentColor"/></svg><span data-vr-label>${esc(t('team.flight.vr', 'View in VR'))}</span></button>
         </header>
         <div class="tf-coach" data-coach aria-live="polite"></div>
         <div class="tf-alarm" data-alarm hidden role="alert"></div>
@@ -532,6 +533,11 @@
 
       // ---------- Clock and 3D ----------
       let api3d = null;
+      const VR_ON = false;
+      let flightMod = null;
+      let vrOK = false;
+      let vr = null;
+      let lastWinFrame = performance.now();
       let dead = false;
       let use2D = false;
       const filmSeconds3D = () => (api3d && api3d.filmSeconds) || (RM ? 4 : 8.4);
@@ -578,6 +584,17 @@
         });
         api3d.filmSeconds = RM ? mod.LAUNCH_SECONDS_REDUCED : mod.LAUNCH_SECONDS;
         engine.mount(stageEl, api3d);
+        // View in VR (docs/TEAM-V3.md item 16): only when a headset can start a session.
+        flightMod = mod;
+        // Parked for now (scope cut, TEAM-V3.md): set VR_ON to offer it again.
+        if (VR_ON && mod.vrSupported)
+          mod
+            .vrSupported()
+            .then((ok) => {
+              vrOK = !!ok && !dead;
+              showVR();
+            })
+            .catch(() => {});
       };
       const start2D = () => {
         if (dead || use2D) return;
@@ -970,6 +987,11 @@
       function frame(now) {
         if (dead) return;
         raf = requestAnimationFrame(frame);
+        lastWinFrame = performance.now();
+        step(now);
+      }
+      function step(now) {
+        if (dead) return;
         if (ctx.view && ctx.view.paused) {
           if (!pausedAt) pausedAt = performance.now();
           last = now;
@@ -1188,6 +1210,38 @@
         x.fill();
       }
 
+      // ---------- View in VR ----------
+      const vrBtn = $('[data-vr]');
+      const vrLabel = vrBtn.querySelector('[data-vr-label]');
+      function showVR() {
+        // Offered once the spacecraft is in orbit (the launch film moves the camera a lot).
+        const ready = vrOK && !!api3d && !use2D && api3d.state && api3d.state.mode !== 'launch';
+        if (vrBtn.hidden === ready) vrBtn.hidden = !ready;
+      }
+      vrBtn.addEventListener('click', () => {
+        if (!flightMod || !api3d) return;
+        if (vr && vr.active) {
+          vr.exit();
+          return;
+        }
+        if (!vr)
+          vr = flightMod.createVR(api3d, {
+            onChange(on) {
+              vrBtn.classList.toggle('on', on);
+              vrLabel.textContent = on ? t('team.flight.vr.exit', 'Exit VR') : t('team.flight.vr', 'View in VR');
+            },
+            // Standalone headsets pause the page while in VR: keep the flight clock going.
+            onStall(now) {
+              if (performance.now() - lastWinFrame > 150) step(now);
+            },
+          });
+        vr.enter().catch((e) => {
+          console.warn('VR could not start', e);
+          if (SMD.ui && SMD.ui.toast) SMD.ui.toast(t('team.flight.vr.fail', 'VR could not start on this device.'), { kind: 'warn' });
+        });
+      });
+      const vrTimer = setInterval(showVR, 500);
+
       raf = requestAnimationFrame(frame);
       const kitOff = attachKit(root, 'flight', ctx);
 
@@ -1207,6 +1261,10 @@
         kitOff();
         if (guide && guide.clear) guide.clear();
         if (engineSnd.h) engineSnd.h.stop();
+        clearInterval(vrTimer);
+        try {
+          if (vr) vr.dispose();
+        } catch (e) {}
         try {
           if (SMD.three && SMD.three.engine && api3d) SMD.three.engine.stop();
         } catch (e) {}

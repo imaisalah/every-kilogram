@@ -77,7 +77,7 @@
 
   const TRY_ELSE = 'Join the same Wi-Fi as the host, try a different network, or play Same room or One screen.';
   const MESSAGES = {
-    'no-room': 'No room with that code. Check the letters on the host’s screen.',
+    'no-room': 'No room with that code. Check the letters on the host’s screen, and make sure the host’s room is still open. If the host opened the game from their own computer (localhost), ask them to open it from the online link instead.',
     'room-full': 'This crew is full.',
     'room-taken': 'That room code is in use by someone else. Start a new room.',
     'server-full': 'Too many rooms open on this server. Try again in a minute.',
@@ -85,16 +85,19 @@
     'bad-origin': 'Open the game from the address on the big screen.',
     expired: 'This room closed because nobody was using it.',
     'host-closed': 'The host ended the game.',
-    'host-away': 'The host left. Waiting up to 2 minutes for them to come back.',
+    'host-away': 'The host’s screen went away. Waiting up to 2 minutes for them to come back; if they don’t, this round ends and you can start a new room.',
     'host-timeout': 'The host did not come back in time, so this round is over.',
     flooding: 'Too many messages. Reload to rejoin.',
     kicked: 'You were removed from this room.',
     replaced: 'You opened this game somewhere else.',
     'no-relay': 'Phones need the game started with play-team.bat. Everyone can still play on one screen.',
-    'broker-unreachable': 'The free service that connects players is not answering. Try again soon, or play over the LAN with play-team.bat or on One screen.',
+    'broker-unreachable': 'The free service that connects players (0.peerjs.com) is not answering after several tries. Check your internet, try again in a minute, or play over the LAN with play-team.bat or on One screen.',
+    'broker-custom-unreachable': 'Your own connecting server ({broker}) is not answering after several tries. Check it is running and reachable from here, or clear it under Advanced to use the free public one.',
+    'broker-slow': 'The connecting service is slow today. Still trying…',
     'broker-lost': 'Lost touch with the connecting service. Players already here are fine; new players may have to wait.',
-    'ice-failed': `Could not connect you directly to the host. ${TRY_ELSE}`,
-    'ice-timeout': `Connecting took too long. ${TRY_ELSE}`,
+    'ice-failed': `Could not connect you directly to the host: your network or theirs blocks it. ${TRY_ELSE}`,
+    'ice-timeout': `Connecting took too long (no direct path found in 15 seconds). ${TRY_ELSE}`,
+    'host-gone': 'The host’s screen closed. If they come back within 2 minutes the game carries on.',
     'no-webrtc': 'This browser cannot do direct connections. Try a current Chrome, Edge, Firefox or Safari.',
     'old-version': 'Reload this page: the host is running a newer version.',
   };
@@ -125,6 +128,56 @@
   let baseUrl = null;
   let iceServers = null;
   let iceServersProvider = null;
+
+  // ---------- Which PeerJS broker (signalling only) ----------
+  // PeerJS publishes exactly one free public server, 0.peerjs.com:443 path "/"
+  // key "peerjs" (checked 2026-11-14 in the PeerJS docs and the peerjs-server
+  // README: no mirror is listed, so none is invented here). A host that runs
+  // their own PeerServer (npx peer --port 9000) can point every device at it:
+  // net.configure({ broker: 'wss://my.server:9000/' }) or the Advanced box of
+  // the connection check, which stores it in localStorage 'ek.team.broker'.
+  // Every player must use the same broker: the room code lives there.
+  const BROKER_KEY = 'ek.team.broker';
+  const PUBLIC_BROKER = { host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' };
+  let brokerSetting = null;
+  function parseBroker(input) {
+    if (!input) return null;
+    if (typeof input === 'object') {
+      const host = String(input.host || '').trim();
+      if (!host) return null;
+      return { host, port: Number(input.port) || (input.secure === false ? 80 : 443), path: input.path ? String(input.path) : '/', secure: input.secure !== false, key: input.key ? String(input.key) : 'peerjs' };
+    }
+    let text = String(input).trim();
+    if (!text) return null;
+    if (!/^[a-z]+:\/\//i.test(text)) text = `wss://${text}`;
+    let url;
+    try {
+      url = new URL(text);
+    } catch (e) {
+      return null;
+    }
+    if (!url.hostname) return null;
+    const secure = !/^(ws|http):$/.test(url.protocol);
+    const port = Number(url.port) || (secure ? 443 : 80);
+    let path = url.pathname || '/';
+    if (!path.endsWith('/')) path += '/';
+    const key = url.searchParams.get('key') || 'peerjs';
+    return { host: url.hostname, port, path, secure, key };
+  }
+  function brokerText(b) {
+    if (!b) return '';
+    return `${b.secure ? 'wss' : 'ws'}://${b.host}:${b.port}${b.path}${b.key !== 'peerjs' ? `?key=${encodeURIComponent(b.key)}` : ''}`;
+  }
+  function broker() {
+    return brokerSetting || parseBroker(readStore('localStorage', BROKER_KEY)) || null;
+  }
+  // Persist a broker for this device; empty clears it (back to the public one).
+  function setBroker(input) {
+    const parsed = parseBroker(input);
+    brokerSetting = parsed;
+    writeStore('localStorage', BROKER_KEY, parsed ? brokerText(parsed) : null);
+    return parsed;
+  }
   function origin(opts) {
     if (opts && opts.base) return String(opts.base).replace(/\/$/, '');
     if (baseUrl) return baseUrl;
@@ -165,6 +218,15 @@
     };
   }
 
+  // The text for a code; a custom broker gets named instead of the public one.
+  function statusMessage(code) {
+    if (code === 'broker-unreachable') {
+      const b = broker();
+      if (b) return MESSAGES['broker-custom-unreachable'].replace('{broker}', brokerText(b));
+    }
+    return MESSAGES[code] || code;
+  }
+
   function baseSession(kind, transport) {
     const em = emitter();
     const session = { kind, transport, status: 'idle', statusCode: null, statusText: '', view: null, state: null, code: null, playerId: null, token: null, on: em.on };
@@ -173,7 +235,7 @@
       if (session.status === status && session.statusCode === (code || null)) return;
       session.status = status;
       session.statusCode = code || null;
-      session.statusText = code ? MESSAGES[code] || code : '';
+      session.statusText = code ? statusMessage(code) : '';
       em.emit('status', { status, code: code || null, text: session.statusText });
     };
     return session;
@@ -558,6 +620,8 @@
         session._status('closed', code);
       },
       onIssue(issue) {
+        // Not a player's problem: the broker is slow to open our room. Say so and keep trying.
+        if (issue.code === 'broker-slow') return session._status('connecting', 'broker-slow');
         session._emit('issue', { ...issue, text: MESSAGES[issue.code] || issue.code });
       },
     };
@@ -774,6 +838,9 @@
       onBytes(bytes) {
         session._emit('snapshot', bytes);
       },
+      onIssue(issue) {
+        if (issue.code === 'broker-slow' && session.status === 'connecting') session._status('connecting', 'broker-slow');
+      },
       onMessage: fromHost,
     };
 
@@ -926,14 +993,20 @@
     qr,
     resumable,
     MESSAGES,
+    PUBLIC_BROKER,
     configure(options) {
       const o = options || {};
       if ('base' in o) baseUrl = o.base ? String(o.base).replace(/\/$/, '') : null;
       if ('iceServers' in o) iceServers = o.iceServers || null;
       if ('getIceServers' in o) iceServersProvider = o.getIceServers || null;
+      if ('broker' in o) brokerSetting = parseBroker(o.broker);
     },
     iceServers: () => iceServers,
     iceServersProvider: () => iceServersProvider,
+    broker,
+    setBroker,
+    parseBroker,
+    brokerText,
     registerTransport(name, t) {
       transports[name] = t;
     },

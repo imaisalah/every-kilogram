@@ -243,11 +243,12 @@
   // SMD.settings.quality: 'auto' | 'high' | 'low'; sound: true/false;
   // reducedMotion: true/false (reads back the effective value; set 'auto' to
   // follow the system again); the character controller's camera: lookSpeed
-  // (0.5..2.5, 1 = normal), invertY, autoCamera (follows behind you, default on).
+  // (0.5..2.5, 1 = normal), invertY, autoCamera (follows behind you, default on);
+  // music (on/off) and musicVolume (0..1) for js/team/music.js.
   // Changes emit bus 'settings'.
   const SKEY = 'ek-settings';
   const RM_QUERY = '(prefers-reduced-motion: reduce)';
-  let prefs = { quality: 'auto', motion: 'auto', lookSpeed: 1, invertY: false, autoCamera: true };
+  let prefs = { quality: 'auto', motion: 'auto', lookSpeed: 1, invertY: false, autoCamera: true, music: true, musicVolume: 0.5 };
   try {
     const saved = JSON.parse(store.get(SKEY) || '{}');
     if (['auto', 'high', 'low'].includes(saved.quality)) prefs.quality = saved.quality;
@@ -255,6 +256,8 @@
     if (Number(saved.lookSpeed) >= 0.3 && Number(saved.lookSpeed) <= 3) prefs.lookSpeed = Number(saved.lookSpeed);
     if (typeof saved.invertY === 'boolean') prefs.invertY = saved.invertY;
     if (typeof saved.autoCamera === 'boolean') prefs.autoCamera = saved.autoCamera;
+    if (typeof saved.music === 'boolean') prefs.music = saved.music;
+    if (Number(saved.musicVolume) >= 0 && Number(saved.musicVolume) <= 1) prefs.musicVolume = Number(saved.musicVolume);
   } catch (e) {}
   // ?quality=low|high in the address forces a tier (handy on a class set of laptops).
   try {
@@ -387,6 +390,25 @@
       prefs.autoCamera = !!v;
       saveSettings();
       changed('autoCamera');
+    },
+    // The calm soundtrack (js/team/music.js): on/off and its own volume.
+    get music() {
+      return prefs.music;
+    },
+    set music(v) {
+      prefs.music = !!v;
+      saveSettings();
+      changed('music');
+    },
+    get musicVolume() {
+      return prefs.musicVolume;
+    },
+    set musicVolume(v) {
+      const n = Number(v);
+      if (!(n >= 0 && n <= 1)) return;
+      prefs.musicVolume = n;
+      saveSettings();
+      changed('musicVolume');
     },
     // 'high' | 'low': the tier actually in use.
     tier() {

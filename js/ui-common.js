@@ -187,6 +187,20 @@
             { value: 'off', label: t('settings.off', 'Off') },
           ], S.sound ? 'on' : 'off')}
         </section>
+        ${'musicVolume' in S && SMD.music ? `<section class="ek-set-row">
+          <h3>${esc(t('settings.music', 'Music'))}</h3>
+          ${seg('music', [
+            { value: 'on', label: t('settings.on', 'On') },
+            { value: 'off', label: t('settings.off', 'Off') },
+          ], S.music === false ? 'off' : 'on')}
+          <p class="ek-set-label"><label for="ek-music-vol">${esc(t('settings.music.volume', 'Music volume'))}</label></p>
+          <input type="range" id="ek-music-vol" class="ek-range" min="0" max="100" step="5" value="${Math.round((S.musicVolume || 0) * 100)}" data-range="musicVolume"${S.music === false ? ' disabled' : ''} />
+          <p class="ek-set-note">${esc(t('settings.music.note', 'Calm space music made as you play. Sound Off silences it too.'))}</p>
+        </section>` : ''}
+        ${SMD.team && SMD.team.guide && SMD.team.guide.picker ? `<section class="ek-set-row">
+          <h3>${esc(t('settings.guide', 'Guide'))}</h3>
+          <div data-guide-picker></div>
+        </section>` : ''}
         <section class="ek-set-row">
           <h3>${esc(t('settings.motion', 'Motion'))}</h3>
           ${seg('motion', [
@@ -238,11 +252,16 @@
           if (which === 'autocam') S.autoCamera = v === 'on';
           if (which === 'look') S.lookSpeed = Number(v);
           if (which === 'invert') S.invertY = v === 'on';
+          if (which === 'music') S.music = v === 'on';
           render();
           const again = dlg.querySelector(`[data-seg="${which}"] [data-value="${v}"]`);
           if (again) again.focus();
         })
       );
+      const vol = dlg.querySelector('[data-range="musicVolume"]');
+      if (vol) vol.addEventListener('input', () => (S.musicVolume = Number(vol.value) / 100));
+      const gp = dlg.querySelector('[data-guide-picker]');
+      if (gp) SMD.team.guide.picker(gp, { compact: true });
       const bg = dlg.querySelector('[data-act="broken-get"]');
       if (bg) bg.addEventListener('click', () => downloadText('every-kilogram-old-save.json', SMD.game.brokenSave() || ''));
       const bd = dlg.querySelector('[data-act="broken-drop"]');

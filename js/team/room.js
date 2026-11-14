@@ -11,8 +11,11 @@
 // opts: { mode:'phones'|'one'|'solo', code, seed, scenarioId, difficulty, sandbox,
 //         hazards:'anomalies'|'realistic', localSeats, timing:{...ms overrides} }
 //
-// Phases (docs/TEAM-V2.md):
-//   lobby -> brief -> questions -> design -> lock -> cabin -> flight -> landing -> surface -> ascent -> debrief
+// Phases (docs/TEAM-V2.md, TEAM-V3.md):
+//   lobby -> brief -> questions -> define -> design -> lock -> cabin -> flight -> landing -> surface -> ascent -> debrief
+//   define is the Mission definition (the science traceability chain); host `next` skips it.
+//   Solo: the player builds only their own job's steps; AI crewmates pick the rest
+//   (view.crewNotes) and answer suggestions at once (view.suggestions[step].reply).
 //   The lobby has its own steps (setupStep): room (own devices / phones only) -> difficulty -> crew -> destination.
 //   brief is KILO's briefing. design is the build, one step at a time (buildStep, steps from
 //   sim.buildSteps). questions sets the success criterion before the build. lock is the review and launch. cabin is the
@@ -70,7 +73,7 @@
     armMs: 3000,
     flightMs: 75000,
     flightHoldMs: 3000, // the flight view's ending lands inside the flight; this is only a beat
-    landingMs: 14000, // a safety net: the landing view reports done itself, about 10 s in
+    landingMs: 20000, // a safety net: the landing view reports done itself (it may wait up to 4.5 s for the "Why we're here" card)
     surfaceMaxMs: 600000, // a safety net: the surface view ends the phase itself
     ascentMs: 11000, // a safety net: the launch shot is 7.5 s and reports done itself
     graceMs: 30000, // a sleeping phone keeps its seat this long
@@ -312,14 +315,14 @@
       const st = buildSteps(s)[s.buildStep];
       return !!st && ownsRole(s, by, st.role);
     }
-    if (s.phase === 'questions' || s.phase === 'lock') return canAct(s, by);
+    if (s.phase === 'questions' || s.phase === 'define' || s.phase === 'lock') return canAct(s, by);
     return false;
   }
 
   // Back one step. Returns a rejection when there is nowhere to go.
   function canGoBack(s) {
     if (s.phase === 'lobby') return SETUP_STEPS(s).indexOf(s.setupStep) > 0;
-    return s.phase === 'brief' || s.phase === 'design' || s.phase === 'questions' || s.phase === 'lock';
+    return s.phase === 'brief' || s.phase === 'design' || s.phase === 'questions' || s.phase === 'define' || s.phase === 'lock';
   }
 
   function goBack(s) {
@@ -337,7 +340,11 @@
     }
     if (s.phase === 'design') {
       if (s.buildStep > 0) s.buildStep--;
-      else setPhase(s, 'questions', 0);
+      else setPhase(s, 'define', 0);
+      return undefined;
+    }
+    if (s.phase === 'define') {
+      setPhase(s, 'questions', 0);
       return undefined;
     }
     if (s.phase === 'questions') {
@@ -372,8 +379,17 @@
       else enterLock(s);
       return undefined;
     }
-    if (s.phase === 'questions') return enterDesign(s);
+    if (s.phase === 'questions') return enterDefine(s);
+    if (s.phase === 'define') return enterDesign(s);
     return reject('wrong-phase', 'Not now.');
+  }
+
+  // The Mission definition (TEAM-V3 item 3): need -> goal -> objectives -> measurements ->
+  // mission requirements -> concept, for the chosen success criterion. Nothing to decide.
+  function enterDefine(s) {
+    s.votes = {};
+    s.armedAt = 0;
+    setPhase(s, 'define', 0);
   }
 
   function enterQuestions(s) {
@@ -388,6 +404,8 @@
     s.design = null;
     s.buildStep = 0;
     s.suggestions = {};
+    s.crewNotes = {};
+    s.crewFor = null;
     s.picks = {};
     s.objectiveId = firstObjective(s);
     s.requirementId = firstRequirement(s);
@@ -442,10 +460,90 @@
       startSoftClock(s);
     }
     s.catalog = attempt(() => sim().catalog(s.scenarioId, s.difficulty), null);
+    if (soloJob(s) && s.design && s.crewFor !== s.requirementId) crewFill(s);
     refreshDerived(s);
     s.votes = {};
     s.armedAt = 0;
     setPhase(s, 'design', s.timing.designMs || 0);
+  }
+
+  // ---------- Solo: the AI crewmates own the other jobs' steps (TEAM-V3 item 2) ----------
+  // The solo player's job is the astronaut they picked (setRole); null = they own every step.
+  function soloJob(s) {
+    if (s.mode !== 'solo') return null;
+    const p = player(s, 'local');
+    return p && ROLES.includes(p.pref) ? p.pref : null;
+  }
+  const crewOwns = (s, st) => !!st && !!soloJob(s) && st.role !== soloJob(s);
+  function crewMember(role) {
+    const C = SMD.team && SMD.team.crew;
+    const m = attempt(() => (C && typeof C.byJob === 'function' ? C.byJob(role) : null), null);
+    return m ? { id: m.id, name: String(m.short || String(m.name || '').split(' ')[0] || BOT_NAMES[role]) } : { id: null, name: BOT_NAMES[role] };
+  }
+  const v3Text = (key, params) => {
+    const D = SMD.team && SMD.team.data;
+    const en = (D && D.V3_STR && D.V3_STR[key]) || key;
+    if (SMD.t) return SMD.t('team.' + key, en, params);
+    return Object.keys(params || {}).reduce((txt, k) => txt.split('{' + k + '}').join(params[k]), String(en));
+  };
+  function noteFor(s, st, option, text) {
+    const who = crewMember(st.role);
+    s.crewNotes = { ...(s.crewNotes || {}), [st.id]: { role: st.role, crewId: who.id, name: who.name, option, text, at: s.now } };
+  }
+  // Every crewmate picks their own steps, in build order; the rocket last.
+  function crewFill(s) {
+    if (typeof sim().crewPlan !== 'function') return;
+    const steps = buildSteps(s).filter((st) => crewOwns(s, st));
+    const plan = attempt(() => sim().crewPlan(s.design, steps.map((st) => st.id)), null);
+    if (plan && plan.design && !plan.design.error) {
+      s.design = plan.design;
+      for (const st of steps) if (plan.picks[st.id]) noteFor(s, st, plan.picks[st.id].option, plan.picks[st.id].line);
+    }
+    s.crewFor = s.requirementId;
+    refreshDerived(s);
+  }
+  // After the player changes something, a crewmate whose part now fails re-picks it,
+  // and a crewmate rocket is always re-fitted to the cheapest one that lifts the ship.
+  const STEP_CHECKS = { power: ['power'], batteries: ['battery'], thermal: ['thermal'], radio: ['comms'], ground: ['comms'], recorder: ['recorder'], computer: ['life'], lifetime: ['life'], instruments: ['instruments'], rocket: ['launcher'] };
+  function crewAdjust(s, changed) {
+    if (typeof sim().crewPick !== 'function') return;
+    const steps = buildSteps(s).filter((st) => crewOwns(s, st) && st.id !== changed);
+    const order = steps.filter((st) => st.id !== 'rocket').concat(steps.filter((st) => st.id === 'rocket'));
+    const title = (buildSteps(s).find((x) => x.id === changed) || {}).title || changed;
+    for (const st of order) {
+      const failing = (attempt(() => sim().checks(s.design), []) || []).filter((c) => !c.ok && (STEP_CHECKS[st.id] || []).includes(c.id));
+      if (st.id !== 'rocket' && !failing.length) continue;
+      const before = attempt(() => sim().stepChoice(s.design, st), null);
+      const pick = attempt(() => sim().crewPick(s.design, st.id), null);
+      if (!pick || !pick.design || pick.design.error) continue;
+      if (JSON.stringify(pick.option) === JSON.stringify(before)) continue;
+      s.design = pick.design;
+      const name = (Array.isArray(pick.option) ? pick.option : [pick.option]).map((id) => (st.options.find((o) => o.id === id) || {}).name || id).join(', ');
+      noteFor(s, st, pick.option, st.id === 'rocket' ? pick.line : v3Text('crew.adjust', { step: title, option: name }));
+    }
+    refreshDerived(s);
+  }
+  // A suggestion on a crewmate's step, answered at once in the crewmate's voice.
+  function crewAnswer(s, st, option, by) {
+    const review = attempt(() => sim().crewReview(s.design, st.id, option), null) || { ok: false, line: v3Text('crew.no.error') };
+    const who = crewMember(st.role);
+    s.suggestions[st.id] = { option, by, name: null, at: s.now, reply: review.ok ? 'ok' : 'no', replyText: review.line, replyBy: who.name };
+    s.stats.requestsSent++;
+    s.stats.requestsAnswered++;
+    if (!review.ok || !review.design) return undefined;
+    s.design = review.design;
+    const now = attempt(() => sim().stepChoice(s.design, st), option);
+    noteFor(s, st, now, review.pickLine || review.line);
+    refreshDerived(s);
+    crewAdjust(s, st.id);
+    s.votes = {};
+    s.armedAt = 0;
+    return undefined;
+  }
+  // A choice that cannot serve the objective here (TEAM-V3 item 14).
+  function lockFor(s, stepId, option) {
+    if (typeof sim().lockOf !== 'function' || !s.design) return null;
+    return attempt(() => sim().lockOf(s.design, stepId, option), null);
   }
 
   function enterLock(s) {
@@ -964,7 +1062,7 @@
       if (!ROLES.includes(a.role)) return reject('bad-role', 'No such role.');
       const p = player(s, a.by);
       if (!p || p.bot) return reject('unknown-player', 'No such player.');
-      const crew = typeof a.crew === 'string' && /^[\w-]{1,24}$/.test(a.crew) ? a.crew : null;
+      const crew = typeof a.crew === 'string' && /^[\w-]{1,64}$/.test(a.crew) ? a.crew : null;
       if (crew && !isLocalMode(s) && Object.keys(s.crewPick).some((id) => id !== p.id && s.crewPick[id] === crew && player(s, id) && player(s, id).connected)) return reject('crew-taken', 'Someone else is flying as that character.');
       const taken = humans(s).find((x) => x.id !== p.id && x.pref === a.role);
       if (taken) {
@@ -989,11 +1087,12 @@
 
     // Jump straight to a build step: "Fix it" on the review, or the step bar.
     stepTo(s, a) {
-      if (s.phase !== 'design' && s.phase !== 'questions' && s.phase !== 'lock') return reject('wrong-phase', 'Not now.');
+      if (s.phase !== 'design' && s.phase !== 'questions' && s.phase !== 'define' && s.phase !== 'lock') return reject('wrong-phase', 'Not now.');
       if (!canAct(s, a.by)) return reject('not-in-crew', 'You are not in this crew.');
       const n = buildSteps(s).length;
       const i = Number(a.index);
       if (!Number.isInteger(i) || i < 0 || i >= n) return reject('bad-step', 'No such step.');
+      if (s.phase === 'questions' || s.phase === 'define') enterDesign(s);
       s.buildStep = i;
       s.votes = {};
       s.armedAt = 0;
@@ -1006,11 +1105,16 @@
       if (!st) return reject('bad-step', 'No such step.');
       if (!isLocalMode(s) && !ownsRole(s, a.by, st.role)) return reject('not-your-role', 'This step belongs to another job. Suggest instead.');
       if (isLocalMode(s) && !canAct(s, a.by)) return reject('not-in-crew', 'You are not in this crew.');
+      // Solo: a crewmate's step is theirs. A pick there is a suggestion they answer.
+      if (crewOwns(s, st)) return crewAnswer(s, st, String(a.option), a.by);
+      const lock = lockFor(s, st.id, String(a.option));
+      if (lock) return reject('locked', lock.reason);
       const next = attempt(() => sim().applyStep(s.design, st.id, String(a.option)), { error: 'sim-error' });
       if (!next || next.error) return reject('bad-set', next && typeof next.error === 'string' ? next.error : 'That cannot change.');
       s.design = next;
       refreshDerived(s);
       delete s.suggestions[st.id];
+      if (soloJob(s)) crewAdjust(s, st.id);
       s.votes = {};
       s.armedAt = 0;
     },
@@ -1020,6 +1124,9 @@
       if (!canAct(s, a.by)) return reject('not-in-crew', 'You are not in this crew.');
       const st = buildSteps(s).find((x) => x.id === a.step);
       if (!st || !st.options.some((o) => o.id === a.option)) return reject('bad-step', 'No such choice.');
+      if (crewOwns(s, st)) return crewAnswer(s, st, String(a.option), a.by);
+      const lock = lockFor(s, st.id, String(a.option));
+      if (lock) return reject('locked', lock.reason);
       const p = player(s, a.by);
       s.suggestions[st.id] = { option: String(a.option), by: a.by, name: p ? p.name : 'Crew', at: s.now };
     },
@@ -1066,11 +1173,11 @@
     },
 
     pick(s, a) {
-      if (s.phase !== 'brief' && s.phase !== 'questions') return reject('wrong-phase', 'Not now.');
+      if (s.phase !== 'brief' && s.phase !== 'questions' && s.phase !== 'define') return reject('wrong-phase', 'Not now.');
       if (!canAct(s, a.by)) return reject('not-in-crew', 'You are not in this crew.');
       if (a.objective !== undefined) s.objectiveId = String(a.objective);
       if (a.requirement !== undefined) s.requirementId = String(a.requirement);
-      if (s.phase === 'questions') {
+      if (s.phase === 'questions' || s.phase === 'define') {
       // The science success criterion is set before spacecraft design.
         if (s.design && a.requirement !== undefined) {
           const next = attempt(() => sim().setRequirement(s.design, s.requirementId), null);
@@ -1089,6 +1196,11 @@
     set(s, a) {
       if (s.phase !== 'design' && s.phase !== 'questions' && s.phase !== 'lock') return reject('wrong-phase', 'The design is locked.');
       if (!ROLES.includes(a.role) || !ownsRole(s, a.by, a.role)) return reject('not-your-role', 'That belongs to another role.');
+      if (a.key === 'orbit' || a.key === 'instruments') {
+        const ids = Array.isArray(a.value) ? a.value : [a.value];
+        const lock = ids.map((v) => lockFor(s, a.key, String(v))).find(Boolean);
+        if (lock) return reject('locked', lock.reason);
+      }
       const next = attempt(() => sim().set(s.design, a.role, a.key, a.value), { error: 'sim-error' });
       if (!next || next.error) return reject('bad-set', next && typeof next.error === 'string' ? next.error : 'That cannot change.');
       s.design = next;
@@ -1202,7 +1314,8 @@
     next(s, a) {
       if (s.phase === 'lobby') return handlers.start(s, a);
       if (s.phase === 'brief') return enterQuestions(s);
-      if (s.phase === 'design' || s.phase === 'questions') return goForward(s, a);
+      if (s.phase === 'questions' || s.phase === 'define') return enterDesign(s);
+      if (s.phase === 'design') return goForward(s, a);
       if (s.phase === 'lock') {
         if (hardFailures(s).length) return reject('hard-check', hardFailures(s)[0].text);
         return enterCabin(s);
@@ -1576,6 +1689,8 @@
       setupSteps: SETUP_STEPS(s),
       buildStep: s.buildStep,
       suggestions: s.suggestions || {},
+      crewNotes: s.crewNotes || {},
+      soloJob: soloJob(s),
       crewPick: s.crewPick || {},
       paused: s.paused ? { by: s.paused.by, name: s.paused.name, at: s.paused.at } : null,
       canBack: canGoBack(s),
@@ -1654,6 +1769,8 @@
       setupStep: mode === 'one' || mode === 'solo' ? 'difficulty' : 'room',
       buildStep: 0,
       suggestions: {},
+      crewNotes: {},
+      crewFor: null,
       crewPick: {},
       paused: null,
       softClock: null,

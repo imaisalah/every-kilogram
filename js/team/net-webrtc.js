@@ -118,8 +118,19 @@
     }
   }
 
-  function makePeer(id, iceServers) {
+  // Opening the broker is retried with backoff before anyone is told it is
+  // down: the free service has slow days. Attempt n waits BROKER_WAITS[n].
+  const BROKER_WAITS = [BROKER_TIMEOUT_MS, 8000, 8000];
+  const BROKER_BACKOFF = [1000, 3000];
+
+  function brokerFor(opts) {
+    const b = (opts && opts.broker && team.net.parseBroker(opts.broker)) || team.net.broker();
+    return b || null;
+  }
+
+  function makePeer(id, iceServers, broker) {
     const options = { debug: 0, config: { iceServers } };
+    if (broker) Object.assign(options, { host: broker.host, port: broker.port, path: broker.path, secure: broker.secure, key: broker.key });
     return id ? new globalThis.Peer(id, options) : new globalThis.Peer(options);
   }
 
@@ -152,8 +163,24 @@
     let code = opts.code || randomCode();
     const resuming = !!opts.code;
     let ice = null;
+    const broker = brokerFor(opts);
+    let brokerTries = 0;
     const players = new Map();
     let nextCid = 1;
+
+    // The broker did not answer: try again a couple of times, then say so.
+    function brokerDown() {
+      if (stopped || opened) return;
+      if (brokerTries < BROKER_WAITS.length - 1) {
+        const wait = BROKER_BACKOFF[Math.min(brokerTries, BROKER_BACKOFF.length - 1)];
+        brokerTries++;
+        if (ev.onIssue) ev.onIssue({ code: 'broker-slow', attempt: brokerTries });
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(open, wait);
+        return;
+      }
+      finish('broker-unreachable');
+    }
 
     function finish(reason) {
       if (stopped) return;
@@ -197,12 +224,12 @@
           // Replaced below.
         }
       }
-      const current = makePeer(PEER_PREFIX + code, ice);
+      const current = makePeer(PEER_PREFIX + code, ice, broker);
       peer = current;
       clearTimeout(brokerTimer);
       brokerTimer = setTimeout(() => {
-        if (!opened) finish('broker-unreachable');
-      }, BROKER_TIMEOUT_MS);
+        if (!opened && peer === current) brokerDown();
+      }, BROKER_WAITS[Math.min(brokerTries, BROKER_WAITS.length - 1)]);
       current.on('open', () => {
         if (peer !== current) return;
         clearTimeout(brokerTimer);
@@ -241,7 +268,7 @@
         }
         if (type === 'browser-incompatible') return finish('no-webrtc');
         if (brokerError(type)) {
-          if (!opened) finish('broker-unreachable');
+          if (!opened) brokerDown();
           else ev.onIssue({ code: 'broker-lost' });
           return;
         }
@@ -416,6 +443,7 @@
     function dial() {
       if (stopped) return;
       closeConn();
+      if (!peer) return redial();
       if (peer.destroyed || peer.disconnected) {
         if (peer.disconnected && !peer.destroyed) {
           try {
@@ -480,27 +508,61 @@
       hostAway();
     }
 
-    iceFor(opts).then((ice) => {
-      if (stopped) return;
-      peer = makePeer(null, ice);
-      brokerTimer = setTimeout(() => finish('broker-unreachable'), BROKER_TIMEOUT_MS);
-      peer.on('open', () => {
+    const broker = brokerFor(opts);
+    let brokerTries = 0;
+    let brokerOpen = false;
+
+    // Same retry as the host: the broker gets a few chances before we give up.
+    function brokerDown() {
+      if (stopped || brokerOpen) return;
+      if (brokerTries < BROKER_WAITS.length - 1) {
+        const wait = BROKER_BACKOFF[Math.min(brokerTries, BROKER_BACKOFF.length - 1)];
+        brokerTries++;
+        if (ev.onIssue) ev.onIssue({ code: 'broker-slow', attempt: brokerTries });
+        if (peer) {
+          try {
+            peer.destroy();
+          } catch (e) {
+            // Replaced below.
+          }
+          peer = null;
+        }
         clearTimeout(brokerTimer);
+        brokerTimer = setTimeout(() => openPeer(iceList), wait);
+        return;
+      }
+      finish('broker-unreachable');
+    }
+
+    let iceList = null;
+    function openPeer(ice) {
+      if (stopped) return;
+      iceList = ice;
+      const current = makePeer(null, ice, broker);
+      peer = current;
+      clearTimeout(brokerTimer);
+      brokerTimer = setTimeout(() => {
+        if (peer === current && !brokerOpen) brokerDown();
+      }, BROKER_WAITS[Math.min(brokerTries, BROKER_WAITS.length - 1)]);
+      current.on('open', () => {
+        if (peer !== current) return;
+        clearTimeout(brokerTimer);
+        brokerOpen = true;
         if (!linked) dial();
       });
-      peer.on('disconnected', () => {
-        if (!stopped && peer && !peer.destroyed) setTimeout(() => {
-          if (!stopped && peer && !peer.destroyed && peer.disconnected) {
+      current.on('disconnected', () => {
+        if (!stopped && peer === current && !current.destroyed) setTimeout(() => {
+          if (!stopped && peer === current && !current.destroyed && current.disconnected) {
             try {
-              peer.reconnect();
+              current.reconnect();
             } catch (e) {
               // Tried again on the next dial.
             }
           }
         }, 2000);
       });
-      peer.on('error', (err) => {
-        if (stopped) return;
+      current.on('error', (err) => {
+        if (stopped || peer !== current) return;
         const type = err && err.type;
         if (type === 'peer-unavailable') {
           if (everLinked) hostAway();
@@ -508,8 +570,15 @@
           return;
         }
         if (type === 'browser-incompatible') return finish('no-webrtc');
-        if (brokerError(type) && !everLinked && !linked) return finish('broker-unreachable');
+        if (brokerError(type) && !everLinked && !linked) {
+          if (!brokerOpen) brokerDown();
+          else finish('broker-unreachable');
+        }
       });
+    }
+
+    iceFor(opts).then((ice) => {
+      if (!stopped) openPeer(ice);
     });
 
     return {

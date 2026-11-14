@@ -38,6 +38,9 @@
     europa: `${NSSDC}galileanfact.html`,
     galileo: 'https://llis.nasa.gov/lesson/492',
     insight: 'https://spacepolicyonline.com/news/vacuum-leaks-delay-launch-of-nasas-insight-mars-mission/',
+    cubesat: 'https://www.nasa.gov/wp-content/uploads/2017/03/nasa_csli_cubesat_101_508.pdf',
+    smallsat: 'https://www.nasa.gov/smallsat-institute/sst-soa/',
+    thermal: 'https://www.nasa.gov/smallsat-institute/sst-soa/thermal-control/',
   };
 
   const ROLES = ['planner', 'engineer', 'scientist', 'comms'];
@@ -46,7 +49,7 @@
   // the crew carries only oxygen, fuel to get home and a drill that pulls ice cores.
   const KEY_ROLE = {
     orbit: 'planner', launcher: 'planner', route: 'planner', lifetime: 'planner', schedule: 'planner', ascent: 'planner',
-    structure: 'engineer', panels: 'engineer', batteries: 'engineer', adcs: 'engineer', computer: 'engineer', propMargin: 'engineer', oxygen: 'engineer',
+    structure: 'engineer', panels: 'engineer', batteries: 'engineer', adcs: 'engineer', computer: 'engineer', propMargin: 'engineer', oxygen: 'engineer', thermal: 'engineer',
     instruments: 'scientist', duty: 'scientist', processing: 'scientist', drill: 'scientist',
     antenna: 'comms', radio: 'comms', ground: 'comms', coding: 'comms', recorder: 'comms',
   };
@@ -54,7 +57,7 @@
 
   const GROUP_TITLES = {
     orbit: 'Orbit', launcher: 'Rocket', route: 'Route', lifetime: 'Mission length', schedule: 'Build schedule', ascent: 'Fuel to get home',
-    structure: 'Structure', panels: 'Power source', batteries: 'Batteries', adcs: 'Pointing', computer: 'Flight computer', propMargin: 'Spare fuel', oxygen: 'Spare oxygen',
+    structure: 'Structure', panels: 'Power source', batteries: 'Batteries', adcs: 'Pointing', computer: 'Flight computer', propMargin: 'Spare fuel', oxygen: 'Spare oxygen', thermal: 'Thermal control',
     instruments: 'Instruments', duty: 'How often they run', processing: 'Onboard processing', drill: 'Drill',
     antenna: 'Antenna', radio: 'Radio', ground: 'Ground stations', coding: 'Signal coding', recorder: 'Data recorder',
   };
@@ -73,6 +76,12 @@
     mag: { ...pick(GD.INSTRUMENTS.mag), kind: 'field', needsSun: false, tier: 1, continuous: true, note: 'Feels a salty ocean bend Jupiter’s magnetic field.', source: SRC.clipper },
     uso: { ...pick(GD.INSTRUMENTS.uso), kind: 'radio', needsSun: false, tier: 2, continuous: true, needsDish: 2, note: 'Turns your radio into a gravity meter. Needs a 2 m dish or bigger.', source: SRC.magellan },
     lidar: { name: 'Laser altimeter', mass: 15, power: 34, rate: 1.2, cost: 22, kind: 'laser', needsSun: false, tier: 2, note: 'Measures height with laser pulses, even inside dark craters.', source: SRC.lro },
+    // CubeSat-scale instruments (the CubeSat scenario only). Masses and powers are
+    // typical of flown CubeSat payloads (NASA Small Spacecraft Technology State of the Art).
+    cubeWide: { name: 'Wide-field camera', mass: 0.4, power: 2, rate: 2.5, cost: 0.08, kind: 'wide', needsSun: true, tier: 1, note: 'A phone-sized camera that sees a 100 km strip. Fields are just a few pixels.', source: SRC.smallsat },
+    cubeCam: { name: 'Four-colour camera', mass: 1.1, power: 4, rate: 12, cost: 0.3, kind: 'optical', needsSun: true, tier: 1, note: 'Sees a 5 m patch in four colours, enough to tell how green a field is.', source: SRC.smallsat },
+    cubeTir: { name: 'Thermal camera', mass: 1.4, power: 6, rate: 3, cost: 0.45, kind: 'ir', needsSun: false, tier: 1, trl: 7, note: 'Measures how warm the ground is. Thirsty plants run hot, day and night.', source: SRC.smallsat },
+    cubeHyper: { name: 'Hyperspectral imager', mass: 1.7, power: 8, rate: 24, cost: 0.8, kind: 'optical', needsSun: true, tier: 2, trl: 7, note: 'Hundreds of colours: reads plant health in detail. Floods the radio with data.', source: SRC.smallsat },
   };
   function pick(i) {
     return { name: i.name, mass: i.mass, power: i.power, rate: i.rate, cost: i.cost };
@@ -165,6 +174,21 @@
     { id: 'g2', name: 'Two ground stations', stations: 2, nearPerYear: 8, deepPerYear: 22, tier: 1, note: 'Twice the time in contact, and twice the bill.', source: SRC.dsn },
     { id: 'g3', name: 'Three stations, one at the pole', stations: 3, nearPerYear: 15, deepPerYear: 36, tier: 2, note: 'Hears you on almost every orbit. Costs a fortune to run.', source: SRC.dsn },
   ];
+
+  // Thermal control (TEAM-V3 item 17). `standard` is exactly the old baseline (the
+  // scenario's thermalFrac and heaterW), so designs without a thermal pick fly as before.
+  // cap: how harsh a world it can handle (scenario thermalNeed 0.5 mild .. 0.9 harsh);
+  // ageMult: how fast panels and batteries age (hot-cold swings wear parts out).
+  COMMON.thermal = [
+    { id: 'blanket', name: 'Blankets and paint', massMult: 0.55, heaterMult: 0.3, powerW: 0, costM: 0, cap: 0.55, ageMult: 1.5, tier: 2, trl: 9, note: 'Gold blankets and white paint. Light and needs no power, but weak where it is very cold or very hot.', source: SRC.thermal },
+    { id: 'standard', name: 'Heaters and a radiator', massMult: 1, heaterMult: 1, powerW: 0, costM: 0, cap: 1, ageMult: 1, tier: 1, trl: 9, note: 'Thermostat heaters and a radiator panel: the usual way.', source: SRC.thermal },
+    { id: 'louvres', name: 'Louvres and heat pipes', massMult: 1.8, heaterMult: 1.4, powerW: 8, costM: 3, cap: 1.6, ageMult: 0.5, tier: 2, trl: 9, note: 'Shutters and heat pipes keep every part at its favourite temperature. Heavy, but parts age half as fast.', source: SRC.thermal },
+  ];
+  // Technology readiness of the parts that are not flight-proven many times (default 9).
+  [['processing', 'smart', 7], ['recorder', 'rec4096', 7], ['structure', 'vault150', 6], ['drill', 'deep', 6], ['oxygen', 'o2', 8], ['antenna', 'a03', 9]].forEach(([k, id, trl]) => {
+    const o = COMMON[k] && COMMON[k].find((x) => x.id === id);
+    if (o) o.trl = trl;
+  });
 
   // Which science sites each instrument can scan on the surface (TEAM-SURFACE.md kinds).
   const SCAN_FITS = {
@@ -397,6 +421,198 @@
     },
   };
 
+  // ---------- CubeSat 101 (TEAM-V3 item 15) ----------
+  // A 6U or 12U CubeSat watching the Nile from low Earth orbit. Everything is
+  // CubeSat scale: kilograms, watts and thousands of dollars ($0.3M = $300k).
+  // The ride is a slot on a rideshare (NASA CubeSat 101; ELaNa / CSLI).
+  const keep = (key, id, extra) => ({ ...COMMON[key].find((o) => o.id === id), ...extra, source: SRC.smallsat });
+  SCENARIOS.cubesat = {
+    id: 'cubesat', title: 'CubeSat over the Nile', kind: 'earth', dest: 'earth', training: true, surface: null, cubesat: true,
+    budgetM: 3.1, deadlineMonths: 18, devBase: 12, opsPerYear: 0.12, busCost: 0.7, devPerKg: 0.05, latePerMonth: 0.25, thermalFrac: 0.02, heaterW: 1, busW: 5, au: 1,
+    rateMult: 1, busKg: 4.2, engineKg: 0, noPropulsion: true, linkK: 6e-8, maxInstrumentKg: 2,
+    question: 'Farmers along the Nile need a cheap eye in the sky. Can a satellite the size of a shoebox tell them which fields are thirsty?',
+    objective: 'Map crop health along the Nile with a CubeSat.',
+    linkMode: 'near',
+    noCrises: ['fuelLeak'],
+    objectives: [
+      { id: 'green', title: 'How green each field is', instruments: { cubeCam: 1, cubeHyper: 1, cubeWide: 0.35 } },
+      { id: 'thirst', title: 'Which fields are thirsty (too warm)', instruments: { cubeTir: 1, cubeHyper: 0.4 } },
+      { id: 'weekly', title: 'The whole valley, every week', instruments: { cubeWide: 1, cubeCam: 0.5 } },
+    ],
+    requirements: [
+      { id: 'green', title: 'Crop health map', text: 'How green is every field?', weights: { green: 0.6, thirst: 0.15, weekly: 0.25 }, needs: { green: 2300, thirst: 550, weekly: 1550 } },
+      { id: 'thirst', title: 'Thirsty fields', text: 'Which fields need water now?', weights: { green: 0.25, thirst: 0.6, weekly: 0.15 }, needs: { green: 2300, thirst: 840, weekly: 1550 } },
+    ],
+    orbits: [
+      orbitEarth({ id: 'iss', name: 'Space station orbit, 415 km', altKm: 415, launchFactor: 1, insertionDv: 0, dvPerYear: 0, radKrad: 1, dragYears: 1.2, revisitDays: 5, fit: { optical: 1.1, wide: 0.9, ir: 1.05 }, passes: { perStation: 4, passMin: 7 }, note: 'Pushed out of the space station. An easy ride, but thin air pulls it down in about a year.', tier: 1, source: SRC.cubesat }),
+      orbitEarth({ id: 'sso525', name: 'Sun-synchronous, 525 km', altKm: 525, launchFactor: 1, insertionDv: 0, dvPerYear: 0, radKrad: 1.5, dragYears: 6, revisitDays: 4, fit: { optical: 1, wide: 1, ir: 1 }, passes: { perStation: 4, passMin: 9 }, note: 'Where rideshares drop most CubeSats. Same light every day, lasts for years.', tier: 1, source: SRC.cubesat }),
+      orbitEarth({ id: 'geo', name: 'Geostationary, 35,786 km', altKm: 35786, launchFactor: 0.02, insertionDv: 1.75, dvPerYear: 0, radKrad: 8, dragYears: 200, rangeKm: 38000, revisitDays: 0.05, eclipseOverride: 0.05, fit: { optical: 0.12, wide: 0.6, ir: 0.6 }, passes: { continuous: true }, note: 'Hangs over Egypt all day. Far beyond any CubeSat ride.', tier: 1, lockAlways: 'A rideshare drops CubeSats in low orbit, and a CubeSat has no engine to climb 36,000 km.' }),
+    ],
+    routes: [{ id: 'rideshare', name: 'Rideshare launch', costMult: 1, capacityMult: 1, tier: 1, note: 'Your CubeSat rides in a dispenser next to dozens of others.', source: SRC.cubesat }],
+    lifetimes: [{ id: 'm6', years: 0.5, tier: 1 }, { id: 'y1', years: 1, tier: 1 }, { id: 'y2', years: 2, tier: 1 }, { id: 'y3', years: 3, tier: 2 }],
+    instruments: ['cubeCam', 'cubeTir', 'cubeWide', 'cubeHyper'],
+    panels: [
+      { id: 'body', name: 'Cells on the body', areaM2: 0.05, eff: 0.3, kgFixed: 0.2, costFixed: 0.03, tier: 1, note: 'Solar cells glued to the sides. Nothing to unfold, not much power.' },
+      { id: 'wings2', name: 'Two fold-out wings', areaM2: 0.14, eff: 0.3, kgFixed: 0.5, costFixed: 0.08, tier: 1, note: 'Wings that spring open in orbit. The usual 6U choice.' },
+      { id: 'wings4', name: 'Four fold-out wings', areaM2: 0.26, eff: 0.3, kgFixed: 0.95, costFixed: 0.15, tier: 1, note: 'A big cross of panels. Plenty of power, more to go wrong.' },
+    ],
+    parts: {
+      launcher: [
+        { id: 'slot6', name: '6U slot on a rideshare', leo: 12, c0: 12, scale: 1, costM: 0.3, tier: 1, u: 6, note: 'A 6U CubeSat: two milk cartons. Up to 12 kg.', source: SRC.cubesat },
+        { id: 'slot12', name: '12U slot on a rideshare', leo: 24, c0: 24, scale: 1, costM: 0.55, tier: 1, u: 12, note: 'A 12U CubeSat: twice the room. Up to 24 kg.', source: SRC.cubesat },
+        { id: 'dedicated', name: 'Your own small rocket', leo: 200, c0: 200, scale: 1, costM: 7.5, tier: 1, note: 'Any orbit, any day, and a bill twenty times bigger.', source: SRC.launchers },
+      ],
+      structure: [keep('structure', 'standard', { frac: 0.15, mass: 0, costM: 0.02, shieldKrad: 12 })],
+      batteries: [
+        { id: 'b10', name: '10 Wh battery', wh: 10, mass: 0.08, costM: 0.005, tier: 2, note: 'A few phone batteries. Only just enough.' },
+        { id: 'b20', name: '20 Wh battery', wh: 20, mass: 0.15, costM: 0.01, tier: 1, note: 'The usual CubeSat battery pack.' },
+        { id: 'b40', name: '40 Wh battery', wh: 40, mass: 0.3, costM: 0.02, tier: 1, note: 'Room for the instruments to keep working in the dark.' },
+        { id: 'b80', name: '80 Wh battery', wh: 80, mass: 0.6, costM: 0.04, tier: 3, note: 'Heavy for a CubeSat.' },
+      ],
+      adcs: [keep('adcs', 'magnet', { mass: 0.15, powerW: 0.5, costM: 0.04 }), keep('adcs', 'wheels', { mass: 0.7, powerW: 2, costM: 0.15 }), keep('adcs', 'star', { mass: 1, powerW: 3, costM: 0.35 })],
+      computer: [keep('computer', 'single', { mass: 0.1, powerW: 0.4, costM: 0.02 }), keep('computer', 'dual', { mass: 0.2, powerW: 0.8, costM: 0.04 }), keep('computer', 'radhard', { mass: 0.3, powerW: 1, costM: 0.25 })],
+      processing: [keep('processing', 'raw', { powerW: 0 }), keep('processing', 'compress', { powerW: 0.4 }), keep('processing', 'smart', { powerW: 1.2 })],
+      propMargin: [{ id: 'mnone', name: 'No propulsion', frac: 0, tier: 1, note: 'Most CubeSats have no engine at all.' }],
+      antenna: [
+        { id: 'whip', name: 'UHF whip antenna', diaM: 0.05, mass: 0.05, costM: 0.005, tier: 1, note: 'A tape-measure strip that springs out.' },
+        { id: 'patch', name: 'Patch antenna', diaM: 0.1, mass: 0.1, costM: 0.02, tier: 1, note: 'A flat square on one face.' },
+        { id: 'dish05', name: '0.5 m fold-out dish', diaM: 0.5, mass: 1.5, costM: 0.3, tier: 3, trl: 7, note: 'Unfolds like an umbrella (RainCube flew one).' },
+      ],
+      radio: [
+        { id: 'uhf', name: 'UHF radio', rfW: 1, dcW: 3, mass: 0.1, costM: 0.01, maxMbps: 0.0096, tier: 1, note: 'Hobby-radio band. Commands, not pictures.' },
+        { id: 'sband', name: 'S-band radio', rfW: 2, dcW: 8, mass: 0.2, costM: 0.05, maxMbps: 2, tier: 1, note: 'A couple of megabits a second.' },
+        { id: 'xband', name: 'X-band radio', rfW: 4, dcW: 15, mass: 0.3, costM: 0.15, maxMbps: 100, tier: 1, trl: 8, note: 'Fast, power hungry while it talks.' },
+      ],
+      recorder: [
+        { id: 'rec8', name: '8 Gbit memory card', gbit: 8, mass: 0.02, costM: 0.003, tier: 1, note: 'Fills fast.' },
+        { id: 'rec32', name: '32 Gbit memory card', gbit: 32, mass: 0.04, costM: 0.006, tier: 1, note: 'A day of pictures.' },
+        { id: 'rec128', name: '128 Gbit recorder', gbit: 128, mass: 0.1, costM: 0.02, tier: 1, note: 'Plenty between passes.' },
+      ],
+      ground: [
+        { id: 'gu1', name: 'One university station', stations: 1, nearPerYear: 0.02, deepPerYear: 0.02, tier: 1, note: 'A dish on a campus roof in Egypt. A few passes a day.' },
+        { id: 'gu2', name: 'Two stations', stations: 2, nearPerYear: 0.06, deepPerYear: 0.06, tier: 1, note: 'Rent time on a second station abroad.' },
+        { id: 'gu3', name: 'A worldwide network', stations: 3, nearPerYear: 0.18, deepPerYear: 0.18, tier: 2, note: 'Pay per pass on stations all over the world.' },
+      ],
+      thermal: [keep('thermal', 'blanket', { costM: 0 }), keep('thermal', 'standard', { costM: 0 }), keep('thermal', 'louvres', { costM: 0.05, powerW: 0.5 })],
+    },
+    packs: {
+      radio: [
+        { id: 'uhf', name: 'UHF whip and radio', note: 'Tiny and cheap. Fine for commands, far too slow for pictures.', picks: { antenna: 'whip', radio: 'uhf' } },
+        { id: 'sband', name: 'S-band patch and radio', note: 'The common CubeSat link: a few megabits a second.', picks: { antenna: 'patch', radio: 'sband' } },
+        { id: 'xband', name: 'X-band patch and radio', note: 'Up to 100 megabits a second. Drinks power while it talks.', picks: { antenna: 'patch', radio: 'xband' } },
+      ],
+    },
+    stepText: { rocket: { title: 'Bus and ride', ask: 'Which slot on which rocket carries your CubeSat?' } },
+    starter: { orbit: 'sso525', launcher: 'slot6', lifetime: 'y2', panels: 'wings2', batteries: 'b20', instruments: ['cubeWide'], duty: 'd60', antenna: 'patch', radio: 'sband', ground: 'gu1', recorder: 'rec32', structure: 'standard', adcs: 'wheels', computer: 'single', propMargin: 'mnone', processing: 'compress', thermal: 'standard' },
+  };
+  // Keep the destinations in order: the Earth training flights first.
+  ['moon', 'mars', 'venus', 'europa'].forEach((k) => {
+    const v = SCENARIOS[k];
+    delete SCENARIOS[k];
+    SCENARIOS[k] = v;
+  });
+
+  // ---------- Science traceability (TEAM-V3 item 3) ----------
+  // NASA "Design and Develop Science Missions": science need -> mission goal ->
+  // science objectives -> measurement requirements -> mission requirements -> concept.
+  // Plain words. thermalNeed: how harsh the world is for electronics (0.5 mild .. 0.9).
+  const TRACE = {
+    nile: {
+      need: 'Egypt grows its food along the Nile, and water is scarce. Farmers need to know which fields are thirsty.', target: 'the farm fields', thermalNeed: 0.5, thermalEnv: 'mild',
+      measure: { fields: 'Pictures that show single fields, a few metres per pixel', water: 'Infrared light that shows which plants are short of water', whole: 'The whole valley, seen every few days' },
+      concept: 'An Earth-watching satellite in a low orbit photographs the valley and sends the pictures to a station in Egypt.',
+    },
+    storms: {
+      need: 'Dust storms close roads and airports and make people ill. Egypt needs a warning before they arrive.', target: 'the dust storms', thermalNeed: 0.5, thermalEnv: 'mild',
+      measure: { storms: 'Infrared pictures that show dust in the air, day and night', fronts: 'Wide pictures that show the edge of a storm as it moves' },
+      concept: 'A weather-style satellite watches North Africa and sends warnings home quickly.',
+    },
+    cubesat: {
+      need: 'Small farms cannot pay for a big satellite. A cheap shoebox-sized one could still tell them which fields are thirsty.', target: 'the farm fields', thermalNeed: 0.5, thermalEnv: 'mild',
+      measure: { green: 'Pictures in four colours that show how green each field is', thirst: 'Heat pictures: thirsty fields are warmer', weekly: 'Every field seen at least once a week' },
+      concept: 'A 6U or 12U CubeSat rides to low orbit on a shared rocket, photographs the valley and talks to a university station in Egypt.',
+    },
+    moon: {
+      need: 'Future Moon bases need water, and carrying it from Earth is very expensive.', target: 'the dark polar craters', thermalNeed: 0.8, thermalEnv: 'cold',
+      measure: { hydrogen: 'Count neutrons from the ground to map hydrogen, a sign of water', craters: 'Radar echoes from craters that never see the Sun', images: 'Pictures of crater floors, lit by starlight or laser' },
+      concept: 'An orbiter on a low polar orbit maps the ice; then a crew lander goes down to sample it.',
+    },
+    mars: {
+      need: 'Astronauts on Mars will need water to drink and to make fuel.', target: 'the buried ice', thermalNeed: 0.75, thermalEnv: 'cold',
+      measure: { ice: 'Radar echoes from ice 1 to 100 m under the dust', sites: 'Pictures sharp enough to see a 1 m boulder', hydrogen: 'Count neutrons to map hydrogen in the top metre' },
+      concept: 'An orbiter maps the ice from above and relays data; a crew lands near the ice and drills it.',
+    },
+    venus: {
+      need: 'Venus was once like Earth. Is it still volcanically alive? That tells us how planets change.', target: 'the surface under the clouds', thermalNeed: 0.85, thermalEnv: 'hot',
+      measure: { map: 'Radar pictures through the clouds, to compare with Magellan’s', rocks: 'The infrared glow of the surface rock at night', gravity: 'Tiny changes in the radio signal that show the pull of gravity' },
+      concept: 'A radar orbiter maps the planet; a crew on a floating platform samples the cloud chemistry.',
+    },
+    europa: {
+      need: 'Europa may hide a salty ocean: one of the best places to look for life beyond Earth.', target: 'the ice shell', thermalNeed: 0.9, thermalEnv: 'cold',
+      measure: { shell: 'Radar echoes through kilometres of ice', ocean: 'The magnetic field bent by a salty ocean', surface: 'Close pictures of the cracks and ridges' },
+      concept: 'A spacecraft loops around Jupiter past Europa many times; a crew lands where plume material has fallen.',
+    },
+  };
+  Object.keys(TRACE).forEach((id) => Object.assign(SCENARIOS[id], TRACE[id]));
+  SCENARIOS.storms.orbits.find((o) => o.id === 'sso600').lockFor = { early: 'Passes over Egypt only every day and a half: too slow for an early warning.' };
+
+  // Three signature missions (TEAM-V3 item 19): Moon, Mars and the CubeSat each add
+  // their own mission requirements, their own crises first in the flight, and (Mars)
+  // their own build step. keys are judged in sim.requirementStatus.
+  SCENARIOS.moon.extraReqs = [{ key: 'night', text: 'Keep the electronics alive through long eclipses and the cold polar night.', steps: ['thermal', 'batteries'], segment: 'space' }];
+  SCENARIOS.moon.crisisSet = ['lunarEclipse'];
+  SCENARIOS.mars.extraReqs = [
+    { key: 'arrive', text: 'Arrive safely and land close to the ice: the arrival and the orbit set how close.', steps: ['route', 'orbit'], segment: 'space' },
+    { key: 'dust', text: 'Keep a power reserve for dust storms that dim the Sun.', steps: ['power', 'batteries'], segment: 'space' },
+  ];
+  SCENARIOS.mars.crisisSet = ['dustStorm'];
+  SCENARIOS.mars.routeStep = true;
+  SCENARIOS.cubesat.extraReqs = [
+    { key: 'box', text: 'Fit everything into a 6U or 12U box and its rideshare slot.', steps: ['rocket', 'instruments'], segment: 'launch' },
+    { key: 'databudget', text: 'Send every picture home through a radio the size of a deck of cards.', steps: ['radio', 'ground', 'recorder'], segment: 'ground' },
+  ];
+  SCENARIOS.cubesat.crisisSet = ['tumble'];
+
+  // Mission requirements every mission shares; {primary} and {target} come from the scenario.
+  const MISSION_REQS = [
+    { key: 'measure', text: 'Carry instruments for the top objective: {primary}.', steps: ['instruments'], segment: 'space' },
+    { key: 'view', text: 'Fly an orbit that sees {target} well.', steps: ['orbit'], segment: 'space' },
+    { key: 'power', text: 'Make enough power, in sunlight and in the dark.', steps: ['power', 'batteries', 'thermal'], segment: 'space' },
+    { key: 'data', text: 'Get all the science data home to Earth.', steps: ['radio', 'ground', 'recorder'], segment: 'ground' },
+    { key: 'life', text: 'Keep working for the whole mission.', steps: ['lifetime', 'computer', 'thermal'], segment: 'space' },
+    { key: 'launch', text: 'Fit on one rocket and inside the budget.', steps: ['rocket'], segment: 'launch' },
+    { key: 'land', text: 'Land near the {site}, and bring the crew and samples home.', steps: ['landing', 'orbit'], segment: 'space', landing: true },
+  ];
+
+  // The four mission segments (NASA "Design and Develop Science Missions").
+  const SEGMENTS = [
+    { id: 'launch', title: 'Launch segment', blurb: 'The rocket that puts it all in space.' },
+    { id: 'space', title: 'Space segment', blurb: 'The spacecraft, its instruments and its orbit.' },
+    { id: 'ground', title: 'Ground segment', blurb: 'The stations and the team on Earth that run the mission.' },
+    { id: 'user', title: 'User segment', blurb: 'The scientists who use what comes home.' },
+  ];
+
+  // Concept maturity depth by difficulty (inspired by JPL's Concept Maturity Levels).
+  const CML = {
+    cadet: { level: '1–2', name: 'Idea and feasibility', what: 'Plain choices with simple pros and cons: can it work at all?', depth: 1 },
+    engineer: { level: '3', name: 'Trade space', what: 'Real specs on every card: compare the options and choose.', depth: 2 },
+    director: { level: '4', name: 'Point design', what: 'One detailed design: margins, backups, ageing, readiness, cost confidence and how each requirement is checked.', depth: 3 },
+  };
+  CML.sandbox = CML.director;
+
+  // How each step's requirement is verified before launch (CML 4 cards).
+  const VERIFY = {
+    orbit: 'Analysis: an orbit simulation', power: 'Test: lamps shine on the panels', batteries: 'Test: charge and drain cycles', thermal: 'Test: a thermal vacuum chamber',
+    instruments: 'Test: calibrate against known targets', radio: 'Test: a radio link end to end', ground: 'Demonstration: a pass with the real station', recorder: 'Test: fill it and read it back',
+    computer: 'Test: inject faults on purpose', lifetime: 'Analysis: wear and radiation models', landing: 'Test: drop and fuel-burn tests', rocket: 'Analysis: loads during launch',
+  };
+  // Where a part has flown before (Engineer cards), by its source.
+  const HERITAGE = {
+    mro: 'Mars Reconnaissance Orbiter (2005)', landsat: 'Landsat 9 (2021)', lro: 'Lunar Reconnaissance Orbiter (2009)', clipper: 'Europa Clipper (2024)', vault: 'Europa Clipper (2024)',
+    magellan: 'Magellan (1989)', rtg: 'Curiosity and Perseverance', dsn: 'NASA Deep Space Network', link: 'NASA Deep Space Network', galileo: 'Galileo (1989)', artemis: 'Artemis II',
+    launchers: 'NASA launch services', cubesat: 'NASA CubeSat Launch Initiative', smallsat: 'Flown on many CubeSats', thermal: 'Flown on almost every spacecraft',
+  };
+
   // Surface parts per mission world.
   const ASCENT = [
     { id: 'a0', name: 'Crew only, no samples', extraKg: 0, costM: 0, tier: 1, note: 'The lander gets you home. Nothing else comes with you.' },
@@ -413,37 +629,40 @@
   // on worlds you land on. packs: steps that set several parts at once, as three
   // ready-made choices. Every step shows at most three cards.
   const BUILD_STEPS = [
-    { id: 'orbit', keys: ['orbit'], role: 'planner', tier: 1, title: 'Orbit', ask: 'Where will your spacecraft fly?', res: ['mass', 'power', 'comms'] },
-    { id: 'power', keys: ['panels'], role: 'engineer', tier: 1, title: 'Power', ask: 'How will it make electricity?', res: ['power', 'mass', 'budget'] },
-    { id: 'batteries', keys: ['batteries'], role: 'engineer', tier: 2, title: 'Batteries', ask: 'How will it get through the dark?', res: ['power', 'mass', 'budget'] },
-    { id: 'instruments', keys: ['instruments'], role: 'scientist', tier: 1, multi: true, title: 'Instruments', ask: 'What will it measure?', res: ['mass', 'power', 'data'] },
+    { id: 'orbit', keys: ['orbit'], role: 'planner', tier: 1, segment: 'space', title: 'Orbit', ask: 'Where will your spacecraft fly?', res: ['mass', 'power', 'comms'] },
+    { id: 'route', keys: ['route'], role: 'planner', tier: 2, segment: 'space', routeOnly: true, title: 'Arrival', ask: 'How will you slow down when you arrive?', res: ['mass', 'budget', 'time'] },
+    { id: 'power', keys: ['panels'], role: 'engineer', tier: 1, segment: 'space', title: 'Power', ask: 'How will it make electricity?', res: ['power', 'mass', 'budget'] },
+    { id: 'batteries', keys: ['batteries'], role: 'engineer', tier: 2, segment: 'space', title: 'Batteries', ask: 'How will it get through the dark?', res: ['power', 'mass', 'budget'] },
+    { id: 'thermal', keys: ['thermal'], role: 'engineer', tier: 2, segment: 'space', title: 'Thermal control', ask: 'How will it stay not too hot and not too cold?', res: ['power', 'mass', 'budget'] },
+    { id: 'instruments', keys: ['instruments'], role: 'scientist', tier: 1, segment: 'space', multi: true, title: 'Instruments', ask: 'What will it measure?', res: ['mass', 'power', 'data'] },
     {
-      id: 'radio', keys: ['antenna', 'radio'], role: 'comms', tier: 1, title: 'Antenna & radio', ask: 'How will the data get home?', res: ['comms', 'power', 'mass'],
+      id: 'radio', keys: ['antenna', 'radio'], role: 'comms', tier: 1, segment: 'space', title: 'Antenna & radio', ask: 'How will the data get home?', res: ['comms', 'power', 'mass'],
       packs: [
         { id: 'small', name: 'Small dish, small radio', note: 'Light and cheap. Slow from far away.', picks: { antenna: 'a1', radio: 'r25' } },
         { id: 'mid', name: 'Medium dish, strong radio', note: 'A good middle choice.', picks: { antenna: 'a2', radio: 'r50' } },
         { id: 'big', name: 'Big dish, loud radio', note: 'Fast data home. Heavy and hungry for power.', picks: { antenna: 'a3', radio: 'r100' } },
       ],
     },
-    { id: 'recorder', keys: ['recorder'], role: 'comms', tier: 2, title: 'Data recorder', ask: 'How much can it remember between calls home?', res: ['data', 'mass', 'budget'] },
+    { id: 'ground', keys: ['ground'], role: 'comms', tier: 2, segment: 'ground', title: 'Ground stations', ask: 'Who on Earth will listen?', res: ['comms', 'data', 'budget'] },
+    { id: 'recorder', keys: ['recorder'], role: 'comms', tier: 2, segment: 'space', title: 'Data recorder', ask: 'How much can it remember between calls home?', res: ['data', 'mass', 'budget'] },
     {
-      id: 'computer', keys: ['computer', 'adcs'], role: 'engineer', tier: 3, title: 'Computer & pointing', ask: 'How steady, and how tough?', res: ['mass', 'power', 'budget'],
+      id: 'computer', keys: ['computer', 'adcs'], role: 'engineer', tier: 3, segment: 'space', title: 'Computer & pointing', ask: 'How steady, and how tough?', res: ['mass', 'power', 'budget'],
       packs: [
         { id: 'basic', name: 'One computer, magnets', note: 'Cheap and rough. Pictures blur a little.', picks: { computer: 'single', adcs: 'magnet' } },
         { id: 'standard', name: 'One computer, reaction wheels', note: 'The usual: steady enough for most jobs.', picks: { computer: 'single', adcs: 'wheels' } },
         { id: 'tough', name: 'Hardened computer, star trackers', note: 'Takes radiation and points precisely. Expensive.', picks: { computer: 'radhard', adcs: 'star' } },
       ],
     },
-    { id: 'lifetime', keys: ['lifetime'], role: 'planner', tier: 2, title: 'Mission length', ask: 'How long will it work?', res: ['budget', 'time'] },
+    { id: 'lifetime', keys: ['lifetime'], role: 'planner', tier: 2, segment: 'ground', title: 'Mission length', ask: 'How long will it work?', res: ['budget', 'time'] },
     {
-      id: 'landing', keys: ['ascent', 'oxygen', 'drill'], role: 'scientist', tier: 1, landing: true, title: 'Landing kit', ask: 'What do you carry down to the surface?', res: ['mass', 'budget'],
+      id: 'landing', keys: ['ascent', 'oxygen', 'drill'], role: 'scientist', tier: 1, segment: 'space', landing: true, title: 'Landing kit', ask: 'What do you carry down to the surface?', res: ['mass', 'budget'],
       packs: [
         { id: 'light', name: 'Crew only', note: 'The lander gets you home. No samples, no spare air.', picks: { ascent: 'a0', oxygen: 'o0', drill: 'hand' } },
         { id: 'balanced', name: 'Some samples, spare air', note: 'Fuel for a few samples and a day of spare oxygen.', picks: { ascent: 'a60', oxygen: 'o1', drill: 'hand' } },
         { id: 'heavy', name: 'Big haul, deep drill', note: 'Fuel for a big load of samples and a drill that reaches real ice.', picks: { ascent: 'a150', oxygen: 'o2', drill: 'deep' } },
       ],
     },
-    { id: 'rocket', keys: ['launcher'], role: 'planner', tier: 1, title: 'Rocket', ask: 'Which rocket can lift all of it?', res: ['mass', 'budget'] },
+    { id: 'rocket', keys: ['launcher'], role: 'planner', tier: 1, segment: 'launch', title: 'Rocket', ask: 'Which rocket can lift all of it?', res: ['mass', 'budget'] },
   ];
 
   // Plain pros and cons on the cards, worked out from the real numbers.
@@ -495,6 +714,108 @@
     'card.helps': 'Helps with: {what}',
     'card.life.short': 'Short and cheap: ops money only for a year.',
     'card.life.long': 'More orbits, more science, {n} years of ops bills.',
+  };
+
+  // ---------- v3 build strings (keys team.*; docs/TEAM-V3.md "As built (v3: build)") ----------
+  const V3_STR = {
+    'card.thermal.cold': 'Too cold in the dark: parts shut down',
+    'card.thermal.hot': 'Overheats in the sunlight',
+    'card.thermal.ok': 'Keeps every part in its safe range',
+    'card.thermal.age': 'Parts age half as fast',
+    'card.thermal.wear': 'Hot-cold swings wear parts faster',
+    'card.ground.hours': '{h} hours of contact a day',
+    'card.ground.wait': 'Long waits between calls home',
+    'card.ride.slot': 'Fits a {u}U CubeSat',
+    'lock.orbit': 'From the {orbit} it would see almost nothing.',
+    'lock.dish': 'Needs a {n} m dish or bigger (Antenna & radio).',
+    'lock.big': 'Too big for a CubeSat: {kg} kg.',
+    'lock.useless': 'Measures nothing that “{req}” asks for.',
+    'spec.height': 'Height', 'spec.period': 'One lap', 'spec.dark': 'In the dark', 'spec.heritage': 'Flown on', 'spec.area': 'Panel area', 'spec.eff': 'Efficiency',
+    'spec.makes': 'Makes here', 'spec.mass': 'Mass', 'spec.power': 'Power', 'spec.data': 'Data', 'spec.energy': 'Energy', 'spec.density': 'Energy per kg', 'spec.heater': 'Heaters',
+    'spec.dish': 'Antenna', 'spec.rf': 'Radio power', 'spec.rate': 'Data rate', 'spec.stations': 'Stations', 'spec.contact': 'Contact', 'spec.yearly': 'Running cost',
+    'spec.capacity': 'Holds', 'spec.pointing': 'Pointing', 'spec.rad': 'Radiation it takes', 'spec.years': 'Length', 'spec.ops': 'Operations', 'spec.fuel': 'Ascent fuel',
+    'spec.sci': 'Science value', 'val.sci': '{n}% of the goal',
+    'spec.lift': 'Lifts home', 'spec.air': 'Spare air', 'spec.drill': 'Drill', 'spec.cost': 'Cost', 'spec.liftorbit': 'Lifts to this orbit', 'spec.dose': 'Radiation dose',
+    'val.km': '{n} km', 'val.kmkm': '{a} × {b} km', 'val.min': '{n} min', 'val.hours': '{n} h', 'val.days': '{n} days', 'val.pct': '{n}%', 'val.m2': '{n} m²', 'val.w': '{n} W',
+    'val.wh': '{n} Wh', 'val.whkg': '{n} Wh/kg', 'val.kg': '{n} kg', 'val.gbd': '{n} Gb a day', 'val.m': '{n} m', 'val.mbps': '{n} Mbit/s', 'val.hday': '{n} h a day',
+    'val.money': '${n}M', 'val.moneyk': '${n}k', 'val.peryear': '{m} a year', 'val.gbit': '{n} Gbit', 'val.krad': '{n} krad', 'val.krady': '{n} krad a year', 'val.years': '{n} years', 'val.year1': '1 year',
+    'val.months': '{n} months', 'val.rtg': '{n} nuclear batteries', 'val.uses': '{a} W (uses {b} W)', 'val.none': 'None', 'val.n': '{n}',
+    'point.rough': 'Rough', 'point.steady': 'Steady', 'point.precise': 'Very steady',
+    'det.margin.power': 'Power margin', 'det.margin.battery': 'Battery margin', 'det.margin.mass': 'Mass margin', 'det.margin.thermal': 'Thermal margin',
+    'det.margin.comms': 'Downlink margin', 'det.margin.data': 'Recorder margin', 'det.margin.life': 'Lifetime margin',
+    'det.redundancy': 'Backup', 'det.degrade': 'Over the mission', 'det.trl': 'Readiness (TRL)', 'det.cost': 'Cost confidence', 'det.verify': 'Verified by',
+    'red.wings': 'Two wings: one failure loses half', 'red.rtg': 'Many thermocouples: fades, never fails at once', 'red.cells': 'Several cell strings: one bad cell costs a little',
+    'red.passive': 'Nothing that can break', 'red.heaters': 'Heaters on two circuits', 'red.inst': 'One unit, no spare', 'red.lga': 'Plus a small backup antenna',
+    'red.stations': '{n} stations: one can be down', 'red.station1': 'One station: if it is down, no contact', 'red.rec': 'Two memory banks', 'red.dual': 'A second computer takes over',
+    'red.single': 'One computer: no backup', 'red.rocket': 'A flight-proven rocket', 'red.orbit': 'Spare fuel for corrections', 'red.ops': 'The team on the ground', 'red.air': 'Spare air is the backup',
+    'deg.panels': '{w} W at the end ({pct}% lost)', 'deg.rtg': 'Steady output (simplified)', 'deg.battery': '{wh} Wh at the end ({pct}% lost)', 'deg.thermal.fast': 'Parts age 1.5 times as fast',
+    'deg.thermal.normal': 'Normal ageing', 'deg.thermal.slow': 'Parts age half as fast', 'deg.rad': 'Radiation: {dose} of {limit} krad by the end', 'deg.drag': 'Air drag pulls it down after {n} years',
+    'trl.9': '9 of 9: flown many times', 'trl.8': '8 of 9: qualified for flight', 'trl.7': '7 of 9: prototype tested in space', 'trl.6': '6 of 9: prototype tested on the ground',
+    'cost.10': '±10%: well known', 'cost.25': '±25%: some unknowns', 'cost.50': '±50%: could surprise you',
+    'det.verify.val': '{how} ({mr})',
+    'cml.label': 'Concept maturity {level}', 'cml.short': 'CML {level}',
+    'mr.met': 'Met', 'mr.missed': 'Not met',
+    'mr.why.measure.ok': 'Your instruments cover it', 'mr.why.measure.bad': 'No instrument measures it',
+    'mr.why.measure.flown': '{pct}% of the science goal came home',
+    'mr.why.view.ok': 'The instruments see well from this orbit', 'mr.why.view.bad': 'Poor view from this orbit', 'mr.why.view.far': 'It lands far from the {target}',
+    'mr.why.power.ok': 'Enough power, day and night', 'mr.why.power.flat': 'Ran flat {n} times in the dark',
+    'mr.why.data.ok': '{pct}% of the data came home', 'mr.why.data.bad': '{pct}% of the data never came home',
+    'mr.why.life.ok': 'Worked for the whole mission', 'mr.why.life.bad': 'Stopped after {pct}% of the mission',
+    'mr.why.launch.ok': 'One rocket, inside the budget',
+    'mr.why.land.ok': 'Crew home with samples', 'mr.why.land.empty': 'Crew home, but no samples', 'mr.why.land.lost': 'The crew did not all get home', 'mr.why.land.notyet': 'Decided on the surface',
+    'score.axis.requirements': 'Mission requirements', 'score.axis.science': 'Science returned', 'score.axis.efficiency': 'Efficiency', 'score.axis.teamwork': 'Teamwork',
+    'score.why.requirements': '{a} of {b} mission requirements met', 'score.why.science': 'What came home, against the goal', 'score.why.efficiency': 'Money, mass and data used well', 'score.why.teamwork': 'Problems fixed, asks answered, hidden goals',
+    'score.item.orbit': 'Science from orbit: {pct}% of the goal', 'score.item.surface': 'Science on the surface: {pct}%', 'score.item.budget': 'Budget left: {left}',
+    'score.item.over': 'Over budget: efficiency × 0.3', 'score.item.mass': 'Spare lift on the rocket: {n} kg', 'score.item.data': 'Data that got home: {pct}%',
+    'score.item.crises': 'Problems fixed: {a} of {b}', 'score.item.crises.none': 'No problems in flight', 'score.item.requests': 'Asks and suggestions answered: {a} of {b}', 'score.item.requests.none': 'No asks sent',
+    'score.item.agendas': 'Hidden goals met: {a} of {b}', 'score.item.agendas.none': 'No hidden goals',
+    'outcome.full': 'Full success', 'outcome.partial': 'Partial success', 'outcome.fail': 'Science missed', 'outcome.lost': 'Mission lost',
+    'outcome.adjust': 'Outcome rule',
+    'outcome.why.full': 'A full success always scores at least 750.', 'outcome.why.partial': 'A partial success scores from 450 to 749.',
+    'outcome.why.fail': 'A mission that missed its science scores at most 449.', 'outcome.why.lost': 'A lost mission scores at most 299, so it never beats one that came home.',
+    'crew.orbit': '{option}: the best view for our instruments.',
+    'crew.orbit.land': '{option}: it reaches the {target}, and the instruments see well.',
+    'crew.power': 'I fitted {option}: {w} W, enough for everything on board.',
+    'crew.batteries': 'I fitted the {option} so we survive the night.',
+    'crew.thermal.cold': '{option}: it keeps the electronics warm through the cold.',
+    'crew.thermal.hot': '{option}: it keeps us cool this close to the Sun.',
+    'crew.thermal.mild': '{option}: enough, this close to home.',
+    'crew.instruments': 'I packed the {list}: they answer “{req}”.',
+    'crew.radio': '{option}: it sends {home} Gb a day home, and we make {gen}.',
+    'crew.ground': '{option}: {h} hours of contact a day.',
+    'crew.recorder': 'The {option} holds everything between calls home.',
+    'crew.computer': '{option}: steady enough, and tough enough for the radiation here.',
+    'crew.lifetime': '{option}: time for the science, and we can pay for it.',
+    'crew.landing': '{option}: fuel to lift {lift} kg of samples home.',
+    'crew.landing.none': '{option}: the lander gets us home.',
+    'crew.rocket': 'The {option} lifts us with {spare} kg to spare. The cheapest one that can.',
+    'crew.rocket.none': 'Nothing lifts this yet. I booked the {option}; we have to cut mass.',
+    'crew.pick': 'I picked {option}.',
+    'crew.adjust': 'The {step} changed, so I switched to {option}.',
+    'crew.yes.better': 'Good call: the flight comes out {n} points better.',
+    'crew.yes.fix': 'Good call: {check}.',
+    'crew.yes.same': 'Fine by me: it works about as well.',
+    'crew.no.check': 'Not that one: {check}.',
+    'crew.no.worse': 'Not that one: the flight comes out {n} points worse.',
+    'crew.no.locked': 'Not that one: {reason}',
+    'crew.no.error': 'That does not fit this ship.',
+    'check.thermal': 'Stays at a safe temperature', 'check.thermal.cold': 'Too cold in the dark: parts will shut down', 'check.thermal.hot': 'Overheats in the sunlight',
+    'event.thermal.cold': 'Too cold in the dark: instruments off to keep warm', 'event.thermal.hot': 'Overheating: instruments throttled',
+    'chain.thermal.cold': 'Too cold in every eclipse: the instruments switched off to keep warm',
+    'chain.thermal.hot': 'Too hot in the sunlight: the instruments were throttled',
+    'chain.why.thermal': 'Electronics only work between about −20 and +50 °C. Blankets alone cannot hold that here.',
+    'card.route.risk': 'Risky: a small chance to lose the craft',
+    'card.route.slow': '{n} months longer to arrive',
+    'card.route.fuel': 'Saves {n} kg of fuel',
+    'proof.measure': '{pct}% of “{req}” covered', 'proof.view': 'Instruments see {pct}% as well as the best orbit', 'proof.power': '{in} W made for {load} W used; battery {wh} of {need} Wh',
+    'proof.data': 'Sends {down} Gb a day for {gen} Gb made; recorder {rec} Gbit', 'proof.life': 'Lasts {max} for a {life} mission', 'proof.launch': '{wet} of {cap} kg; {cost} of {budget}',
+    'proof.land': 'Lifts {lift} kg of samples; lands {where}', 'proof.night': 'Thermal margin {th}; battery {wh} of {need} Wh', 'proof.arrive': 'Lands within {m} m; arrival risk {risk}%',
+    'proof.dust': 'Power margin {pct}% (dust needs 30%)', 'proof.box': '{kg} kg in a {u}U slot (max {cap} kg)', 'proof.databudget': 'Sends {down} Gb a day for {gen} Gb made',
+    'proof.near': 'near the {site}', 'proof.far': 'far from the {site}', 'proof.long': 'more than 10 years',
+    'mr.why.night.cold': 'Too cold in the dark', 'mr.why.arrive.far': 'Lands too far from the ice', 'mr.why.arrive.risky': 'Aerobraking risk is high', 'mr.why.dust.low': 'Too little power to spare for a dust storm',
+    'mr.why.box.big': 'Too heavy for its slot', 'mr.why.ok': 'Verified',
+    'review.verify': 'Verification', 'chain.reentry': 'The air pulled it down {days} days before the end',
+    'chain.why.reentry': 'Low orbits still have a trace of air. It slowly drags a satellite down, and a CubeSat has no engine to climb back up.',
   };
 
   // ---------- Difficulties ----------
@@ -552,6 +873,25 @@
       actions: [{ id: 'reboot', label: 'Send reboot', correct: true }, { id: 'more', label: 'Ask for more data' }, { id: 'wait', label: 'Wait it out' }],
     },
   ];
+  // Signature crises (TEAM-V3 item 19): only on their own mission (scenario crisisSet).
+  const SIGNATURE_CRISES = [
+    {
+      id: 'lunarEclipse', role: 'planner', fixRole: 'engineer', windowSec: 9, weight: 1, only: ['moon'],
+      title: 'Long eclipse!', alarm: 'The Earth is sliding in front of the Sun: hours of darkness ahead.', fix: 'Long eclipse: put the heaters in survival mode!',
+      actions: [{ id: 'survive', label: 'Survival mode', correct: true }, { id: 'full', label: 'Full power' }, { id: 'open', label: 'Open the shutters' }],
+    },
+    {
+      id: 'dustStorm', role: 'scientist', fixRole: 'engineer', windowSec: 9, weight: 1, only: ['mars'],
+      title: 'Global dust storm', alarm: 'Mars is vanishing under dust. Every picture is orange.', fix: 'Dust storm: aim the panels at the Sun and cut the load!',
+      actions: [{ id: 'track', label: 'Aim panels, cut load', correct: true }, { id: 'wait', label: 'Carry on' }, { id: 'burn', label: 'Burn engine' }],
+    },
+    {
+      id: 'tumble', role: 'comms', fixRole: 'engineer', windowSec: 8, weight: 1, only: ['cubesat'],
+      title: 'Tumbling!', alarm: 'The CubeSat is spinning after it left the rocket. The radio fades in and out.', fix: 'Tumbling: switch on the magnetorquers to stop the spin!',
+      actions: [{ id: 'detumble', label: 'Detumble', correct: true }, { id: 'reboot', label: 'Reboot radio' }, { id: 'deploy', label: 'Open the panels' }],
+    },
+  ];
+  CRISES.push(...SIGNATURE_CRISES);
   const OPPORTUNITIES = [
     { id: 'eruption', role: 'scientist', fixRole: 'comms', windowSec: 9, kinds: ['earth', 'moon', 'planet'], title: 'Something is happening below!', alarm: 'Sensors flagged something once-in-a-decade. Point everything at it?', fix: 'Scientist needs a downlink slot right now for a rare event. Give it to them!', actions: [{ id: 'give', label: 'Give the slot', correct: true }, { id: 'hold', label: 'Hold the schedule' }, { id: 'nope', label: 'Ignore it' }], bonus: 0.12 },
     { id: 'dsnSlot', role: 'comms', fixRole: 'planner', windowSec: 8, kinds: ['earth', 'moon', 'planet'], title: 'Free antenna time', alarm: 'Another mission cancelled its slot. Free ground-station time on offer!', fix: 'Take the free station time before someone else does!', actions: [{ id: 'accept', label: 'Accept', correct: true }, { id: 'refuse', label: 'Decline' }, { id: 'later', label: 'Ask for next month' }], bonus: 0.08 },
@@ -740,6 +1080,12 @@
     const add = (key, en) => { if (en !== undefined && en !== null) out.push({ key: `team.${key}`, en }); };
     Object.entries(STR).forEach(([k, v]) => add(k, v));
     Object.entries(CARD_STR).forEach(([k, v]) => add(k, v));
+    Object.entries(V3_STR).forEach(([k, v]) => add(k, v));
+    MISSION_REQS.forEach((m) => add(`mr.${m.key}`, m.text));
+    SEGMENTS.forEach((g) => { add(`seg.${g.id}.title`, g.title); add(`seg.${g.id}.blurb`, g.blurb); });
+    Object.entries(CML).forEach(([k, c]) => { add(`cml.${k}.name`, c.name); add(`cml.${k}.what`, c.what); });
+    Object.entries(VERIFY).forEach(([k, v]) => add(`verify.${k}`, v));
+    Object.entries(HERITAGE).forEach(([k, v]) => add(`her.${k}`, v));
     BUILD_STEPS.forEach((st) => {
       add(`step.${st.id}.title`, st.title);
       add(`step.${st.id}.ask`, st.ask);
@@ -754,6 +1100,14 @@
       s.requirements.forEach((r) => { add(`scn.${s.id}.req.${r.id}.title`, r.title); add(`scn.${s.id}.req.${r.id}.text`, r.text); });
       s.orbits.forEach((o) => { add(`scn.${s.id}.orbit.${o.id}.name`, o.name); add(`scn.${s.id}.orbit.${o.id}.note`, o.note); });
       s.routes.forEach((o) => { add(`scn.${s.id}.route.${o.id}.name`, o.name); add(`scn.${s.id}.route.${o.id}.note`, o.note); });
+      ['need', 'target', 'concept'].forEach((f) => add(`scn.${s.id}.${f}`, s[f]));
+      (s.extraReqs || []).forEach((m) => add(`scn.${s.id}.mr.${m.key}`, m.text));
+      Object.entries(s.measure || {}).forEach(([k, v]) => add(`scn.${s.id}.measure.${k}`, v));
+      s.orbits.forEach((o) => { add(`scn.${s.id}.orbit.${o.id}.lock`, o.lockAlways); Object.entries(o.lockFor || {}).forEach(([r, v]) => add(`scn.${s.id}.orbit.${o.id}.lock.${r}`, v)); });
+      Object.entries(s.stepText || {}).forEach(([k, v]) => { add(`scn.${s.id}.step.${k}.title`, v.title); add(`scn.${s.id}.step.${k}.ask`, v.ask); });
+      Object.entries(s.packs || {}).forEach(([k, list]) => list.forEach((pk) => { add(`pack.${k}.${pk.id}.name`, pk.name); add(`pack.${k}.${pk.id}.note`, pk.note); }));
+      Object.entries(s.parts || {}).forEach(([g, list]) => list.forEach((o) => { add(`opt.${g}.${o.id}.name`, o.name); add(`opt.${g}.${o.id}.note`, o.note); }));
+      s.lifetimes.filter((l) => l.years < 1).forEach((l) => add(`opt.lifetime.${l.id}.name`, `${Math.round(l.years * 12)} months`));
     });
     Object.entries(COMMON).forEach(([g, list]) => {
       if (!Array.isArray(list)) return;
@@ -773,6 +1127,6 @@
     return out.filter((x, i, a) => a.findIndex((y) => y.key === x.key) === i);
   }
 
-  SMD.team.data = { BUILD_STEPS, CARD_STR, SCAN_FITS, UPLINK_WINDOWS, ROLES, KEY_ROLE, SURFACE_KEYS, GROUP_TITLES, INSTRUMENTS, COMMON, LAUNCHERS, SCENARIOS, DIFFICULTIES, FLAWS, CRISES, OPPORTUNITIES, AGENDAS, ANALOGS, SURFACE_ANALOGS, EPITAPHS, STR, strings, SRC, captureDv, G0 };
+  SMD.team.data = { BUILD_STEPS, CARD_STR, V3_STR, MISSION_REQS, SEGMENTS, CML, VERIFY, HERITAGE, SCAN_FITS, UPLINK_WINDOWS, ROLES, KEY_ROLE, SURFACE_KEYS, GROUP_TITLES, INSTRUMENTS, COMMON, LAUNCHERS, SCENARIOS, DIFFICULTIES, FLAWS, CRISES, OPPORTUNITIES, AGENDAS, ANALOGS, SURFACE_ANALOGS, EPITAPHS, STR, strings, SRC, captureDv, G0 };
   if (typeof module === 'object' && module.exports) module.exports = SMD.team.data;
 })();
