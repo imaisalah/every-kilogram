@@ -66,7 +66,36 @@
 }
 .ts-phase {
   position: absolute;
+  z-index: 1;
   inset: 0;
+}
+.ts-stage.ts-has-starfield {
+  isolation: isolate;
+  background: var(--calm-bg);
+}
+.ts-stage-video {
+  display: none;
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  opacity: 0;
+  filter: brightness(1) saturate(0.95);
+  pointer-events: none;
+}
+.ts-stage.ts-has-starfield .ts-stage-video {
+  display: block;
+  opacity: 0.72;
+}
+.ts-stage.ts-has-starfield::after {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(7, 12, 31, 0.12), rgba(7, 12, 31, 0.42));
+  content: '';
+  pointer-events: none;
 }
 .ts-missing {
   display: grid;
@@ -432,6 +461,11 @@
 .ts-v2-body.wide,
 .ts-build .ts-v2-body {
   max-inline-size: 1240px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-stage-video {
+    display: none;
+  }
 }
 .ts-kilo-slot:empty {
   display: none;

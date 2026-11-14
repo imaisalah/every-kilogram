@@ -175,6 +175,7 @@
     render(app, params = {}) {
       const root = document.createElement('main');
       root.className = 'screen ts-screen ts-stage';
+      root.innerHTML = '<video class="ts-stage-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true" tabindex="-1"><source src="assets/video/starfield-menu.mp4" type="video/mp4"></video>';
       app.innerHTML = '';
       app.appendChild(root);
       let session = null;
@@ -210,6 +211,7 @@
           SMD.music.setMission(ctx.view && ctx.view.scenarioId, ctx.view && ctx.view.phase);
         }
         const phase = ctx.view && ctx.view.phase;
+        root.classList.toggle('ts-has-starfield', ['lobby', 'questions', 'design', 'lock'].includes(phase));
         if (!phase || phase === phaseShown) return;
         phaseShown = phase;
         unmount();

@@ -83,6 +83,18 @@ export const AUDIO = {
   },
 };
 
+export const EXTERNAL_MEDIA = [
+  {
+    id: 'menu-starfield',
+    kind: 'video',
+    title: 'Traveling through star fields (Vecteezy asset 34968452)',
+    credit: 'Vecteezy; creator attribution per download license',
+    licence: 'Vecteezy License Agreement',
+    source: 'https://www.vecteezy.com/licensing-agreement',
+    file: 'assets/video/starfield-menu.mp4',
+  },
+];
+
 // Other names that callers have used for the same maps.
 export const ALIASES = { earth: 'earth-day', clouds: 'earth-clouds', venus: 'venus-radar', earthDay: 'earth-day', venusRadar: 'venus-radar', marsColor: 'mars', moonColor: 'moon' };
 
@@ -93,4 +105,5 @@ export const CREDITS = [
   ...Object.entries(TEXTURES).map(([id, t]) => ({ id, kind: 'texture', title: t.title, credit: t.credit, licence: t.licence, source: t.source, file: t.file })),
   ...Object.entries(MODELS).map(([id, m]) => ({ id, kind: 'model', title: m.title, credit: m.credit, licence: m.licence, source: m.source, file: m.file })),
   ...Object.entries(AUDIO).map(([id, a]) => ({ id, kind: 'audio', title: a.title, credit: a.credit, licence: a.licence, source: a.source, file: a.file })),
+  ...EXTERNAL_MEDIA,
 ];

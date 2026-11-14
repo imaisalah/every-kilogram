@@ -57,6 +57,12 @@ Notes:
 |---|---|---|---|
 | `Mars_Mission.mp3` | 20-second mono MP3 (48 kHz) converted from the supplied `scam-mic-sol001-run001.wav`; used as a looping Mars-mission background sound | NASA/JPL-Caltech/LANL/CNES/CNRS/ISAE-Supaero | NASA Science, [First Audio Recording of Sounds on Mars](https://science.nasa.gov/resource/first-audio-recording-of-sounds-on-mars/). NASA media usage guidelines; use does not imply NASA endorsement. |
 
+## Menu video (`assets/video/`)
+
+| File | Description | Credit/source |
+|---|---|---|
+| `starfield-menu.mp4` | Vecteezy stock video asset 34968452, re-encoded for the post-Play lobby background | Vecteezy; confirm the creator attribution and license from the download record. See the [Vecteezy License Agreement](https://www.vecteezy.com/licensing-agreement). |
+
 ## Characters (`assets/models/characters/`)
 
 The Last Light and career characters are built from two free Quaternius packs, both **CC0** (public domain dedication; no attribution required, credited here anyway). The pack pages and the Quaternius FAQ state the licence: "All models are under the CC0 License."
