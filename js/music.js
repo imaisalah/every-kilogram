@@ -26,23 +26,27 @@
     }
   }
 
+  // Settings › Music (js/ui-common.js): on/off and a volume slider (0..1).
+  const musicOn = () => !(SMD.settings && SMD.settings.music === false);
+  const level = () => {
+    const v = SMD.settings && Number(SMD.settings.musicVolume);
+    return isMuted() || !musicOn() ? 0 : Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : defaultVolume;
+  };
+
   function getAudioElement() {
     if (!audioEl) {
       audioEl = new Audio(trackPath);
       audioEl.loop = true;
       audioEl.preload = 'auto';
-      audioEl.volume = isMuted() ? 0 : defaultVolume;
+      audioEl.volume = level();
     }
     return audioEl;
   }
 
   function play() {
+    if (!musicOn()) return;
     const el = getAudioElement();
-    if (isMuted()) {
-      el.volume = 0;
-    } else {
-      el.volume = defaultVolume;
-    }
+    el.volume = level();
 
     const promise = el.play();
     if (promise && promise.then) {
@@ -76,9 +80,7 @@
 
   function setVolume(vol) {
     defaultVolume = Math.max(0, Math.min(1, vol));
-    if (audioEl && !isMuted()) {
-      audioEl.volume = defaultVolume;
-    }
+    if (audioEl) audioEl.volume = level();
   }
 
   function setMission(scenarioId, phase) {
@@ -99,14 +101,14 @@
   // Sync with game settings / mute toggle
   if (SMD.bus) {
     SMD.bus.on('settings', (e) => {
-      if (e && e.key === 'sound') {
-        if (isMuted()) {
+      if (e && (e.key === 'sound' || e.key === 'music' || e.key === 'musicVolume')) {
+        if (isMuted() || !musicOn()) {
           if (audioEl) audioEl.volume = 0;
         } else {
           if (!playing) {
             play();
           } else if (audioEl) {
-            audioEl.volume = defaultVolume;
+            audioEl.volume = level();
           }
         }
       }
@@ -115,7 +117,7 @@
 
   // Autoplay on first user interaction (click, key, touch)
   const unlockAndPlay = () => {
-    if (!isMuted() && !playing) {
+    if (!isMuted() && musicOn() && !playing) {
       play();
     }
   };
