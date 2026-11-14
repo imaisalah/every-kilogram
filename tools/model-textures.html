@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Model textures (dev)</title>
+    <link rel="icon" href="data:," />
+    <!-- Dev check: every image embedded in the GLB models, to look for NASA insignia before shipping. -->
+    <style>
+      body { margin: 0; padding: 8px; background: #555; color: #fff; font: 11px system-ui, sans-serif; display: flex; flex-wrap: wrap; gap: 6px; }
+      figure { margin: 0; width: var(--s); }
+      img { width: var(--s); height: var(--s); object-fit: contain; background: #888; display: block; }
+      figcaption { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import { MODELS } from '../js/3d/assetmanifest.js';
+      const q = new URLSearchParams(location.search);
+      const only = q.get('id');
+      document.documentElement.style.setProperty('--s', (q.get('px') || 170) + 'px');
+      for (const [id, m] of Object.entries(MODELS)) {
+        if (only && id !== only) continue;
+        const buf = await (await fetch('../' + m.file)).arrayBuffer();
+        const dv = new DataView(buf);
+        const jlen = dv.getUint32(12, true);
+        const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jlen)));
+        const binStart = 20 + jlen + 8;
+        (json.images || []).forEach((im, i) => {
+          if (im.bufferView === undefined) return;
+          const bv = json.bufferViews[im.bufferView];
+          const bytes = new Uint8Array(buf, binStart + (bv.byteOffset || 0), bv.byteLength);
+          const url = URL.createObjectURL(new Blob([bytes], { type: im.mimeType }));
+          const f = document.createElement('figure');
+          f.innerHTML = `<img src="${url}"><figcaption>${id} #${i} ${im.name || ''}</figcaption>`;
+          document.body.appendChild(f);
+        });
+      }
+      window.galleryReady = true;
+    </script>
+  </body>
+</html>

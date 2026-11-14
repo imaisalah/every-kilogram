@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Last Light sets (dev)</title>
+    <!-- Everything resolves from the game folder, exactly like index.html. -->
+    <base href="../" />
+    <!--
+      Dev page for the Last Light art: the sets with the post pipeline and a
+      free camera, and the character lineup. Not linked from the game.
+        tools/ll-sets.html?set=pad|capsule|tunnel|habitat
+          &cam=<anchor>            frame an anchor (from behind its facing, eye height)
+          &cam=x,y,z,tx,ty,tz      exact camera position and target
+          &fov=50                  field of view
+          &post=0                  no post-processing (compare)
+          &quality=low|high        force a tier (the game setting)
+          &alarm=1  &power=0.3     set state
+          &anchors=1               show every anchor with its name
+          &t=<s>                   run the set this many seconds before the shot
+          &hud=0                   hide the stats
+        tools/ll-sets.html?view=chars    the character lineup (idle, walk, run, float, reach, wave, sit)
+          &anim=<name>             everyone does one animation
+          &cam=close|face          closer camera
+          &n=<count>               how many characters
+      Free camera: drag to look, WASD to fly, Q/E down/up, Shift faster, wheel = speed.
+      window.LL has { engine, THREE, set, scene, camera, post(), stats(), frame(name|spec) }.
+      window.testReady becomes true once the view has rendered.
+    -->
+    <link rel="stylesheet" href="css/fonts.css" />
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; background: #05070a; overflow: hidden; }
+      #app { display: none; }
+      .ll-view { position: fixed; inset: 0; background: #05070a; }
+      .ll-hud { position: fixed; inset-inline-start: 10px; top: 8px; font: 600 12px/1.35 Archivo, system-ui, sans-serif; color: #dfe6ee; background: rgba(5, 8, 12, 0.6); padding: 6px 9px; border-radius: 4px; white-space: pre; pointer-events: none; z-index: 3; }
+      .ll-labels { position: fixed; inset: 0; pointer-events: none; z-index: 2; font: 600 11px Archivo, system-ui, sans-serif; color: #fff; }
+      .ll-labels span { position: absolute; transform: translate(-50%, -100%); background: rgba(10, 60, 90, 0.75); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="app" aria-live="polite"></div>
+    <div class="ll-view" id="ll-view"></div>
+    <div class="ll-labels" id="ll-labels"></div>
+    <div class="ll-hud" id="ll-hud"></div>
+    <!-- Classic scripts: the same list as index.html -->
+    <script src="js/i18n.js"></script>
+    <script src="js/i18n/ar.js"></script>
+    <script src="js/i18n/ar-hands.js"></script>
+    <script src="js/i18n/ar-testlab.js"></script>
+    <script src="js/i18n/ar-launchday.js"></script>
+    <script src="js/i18n/ar-world.js"></script>
+    <script src="js/i18n/ar-crew.js"></script>
+    <script src="js/i18n/ar-story.js"></script>
+    <script src="js/i18n/ar-story-ui.js"></script>
+    <script src="js/i18n/ar-controls.js"></script>
+    <script src="js/i18n/ar-survival.js"></script>
+    <script src="js/i18n/ar-ll.js"></script>
+    <script src="js/bus.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/model.js"></script>
+    <script src="js/ops.js"></script>
+    <script src="js/agency.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/patch.js"></script>
+    <script src="content/events.js"></script>
+    <script src="content/discoveries.js"></script>
+    <script src="content/realMissions.js"></script>
+    <script src="content/sources.js"></script>
+    <script src="content/tips.js"></script>
+    <script src="content/staff.js"></script>
+    <script src="js/ui-common.js"></script>
+    <script src="js/ui-cards.js"></script>
+    <script src="js/controls-help.js"></script>
+    <script src="js/screen-start.js"></script>
+    <script src="js/screen-newgame.js"></script>
+    <script src="js/screen-hq.js"></script>
+    <script src="js/screen-board.js"></script>
+    <script src="js/screen-design.js"></script>
+    <script src="js/screen-review.js"></script>
+    <script src="js/screen-film.js"></script>
+    <script src="js/screen-results.js"></script>
+    <script src="js/screen-map.js"></script>
+    <script src="js/screen-research.js"></script>
+    <script src="js/screen-archive.js"></script>
+    <script src="js/screen-end.js"></script>
+    <script src="js/screen-classroom.js"></script>
+    <script src="js/avatar.js"></script>
+    <script src="js/screen-avatar.js"></script>
+    <script src="js/screen-testlab.js"></script>
+    <script src="js/screen-launchday.js"></script>
+    <script src="js/screen-ride.js"></script>
+    <script src="js/story/engine.js"></script>
+    <script src="js/story/survival.js"></script>
+    <script src="content/story/ep1.js"></script>
+    <script src="content/story/ep2.js"></script>
+    <script src="content/story/ep3.js"></script>
+    <script src="content/story/ep4.js"></script>
+    <script src="content/story/survival.js"></script>
+    <script src="js/screen-story.js"></script>
+    <script src="content/levels/prologue.js"></script>
+    <script src="content/levels/lifeboat.js"></script>
+    <script src="js/screen-ll.js"></script>
+    <script src="js/demo.js"></script>
+    <script src="js/main.js"></script>
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three.module.js" } }
+    </script>
+    <script type="module" src="tools/ll-sets.js"></script>
+  </body>
+</html>

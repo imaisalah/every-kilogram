@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astronaut (dev)</title>
+    <!-- Everything resolves from the game folder, exactly like index.html. -->
+    <base href="../" />
+    <!--
+      Dev page for the player's astronaut. Not linked from the game.
+        tools/astronaut-test.html                 the character creator (on a ready-made career)
+        ?view=creator&fresh=1                     the creator on a brand-new agency (no badges yet)
+        ?view=grid                                six astronauts, each doing something (walk, wave, celebrate, sad, cheer, look)
+          &anim=walk|wave|celebrate|sad|cheer|idle  all six do the same thing
+          &t=<seconds>                            freeze at that moment of the animation (for screenshots)
+          &cam=close                              closer camera
+          &cam=heads                              all six in a row, head and shoulders
+        ?view=portraits                           createPortrait() images and the 2D fallback
+        ?view=campus                              click (or WASD) to walk around a little plaza; the camera follows
+          &walk=1                                 walks a fixed route by itself
+        ?view=far                                 the astronaut at campus distance (how it reads small)
+      window.testReady becomes true when the view has rendered.
+    -->
+    <link rel="stylesheet" href="css/fonts.css" />
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/hq.css" />
+    <link rel="stylesheet" href="css/design.css" />
+    <link rel="stylesheet" href="css/review.css" />
+    <link rel="stylesheet" href="css/film.css" />
+    <link rel="stylesheet" href="css/map.css" />
+    <link rel="stylesheet" href="css/meta.css" />
+    <link rel="stylesheet" href="css/classroom.css" />
+    <link rel="stylesheet" href="css/avatar.css" />
+    <link rel="stylesheet" href="css/rtl.css" />
+    <link rel="icon" href="data:," />
+    <style>
+      .at-view { position: fixed; inset: 0; background: #e6ece8; }
+      .at-labels { position: fixed; inset: 0; pointer-events: none; font: 600 13px/1.25 Archivo, system-ui, sans-serif; color: #23282e; }
+      .at-labels span { position: absolute; transform: translate(-50%, 0); background: rgba(255, 255, 255, 0.75); padding: 2px 8px; border-radius: 3px; white-space: nowrap; }
+      .at-info { position: fixed; inset-inline-start: 12px; top: 10px; font: 600 13px Archivo, system-ui, sans-serif; color: #23282e; background: rgba(255, 255, 255, 0.8); padding: 6px 10px; border-radius: 4px; }
+      .at-portraits { position: fixed; inset: 0; overflow: auto; padding: 24px; display: flex; flex-wrap: wrap; gap: 18px; align-content: flex-start; background: #e6ece8; font: 600 13px Archivo, system-ui, sans-serif; }
+      .at-portraits figure { margin: 0; text-align: center; }
+      .at-portraits img, .at-portraits canvas { width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle at 50% 40%, #f6f8f6, #cfd9d3); box-shadow: inset 0 0 0 3px #d9a21b; display: block; }
+    </style>
+  </head>
+  <body>
+    <div id="app" aria-live="polite"></div>
+    <!-- Core (same list as index.html) -->
+    <script src="js/i18n.js"></script>
+    <script src="js/i18n/ar.js"></script>
+    <script src="js/bus.js"></script>
+    <script src="js/physics.js"></script>
+    <script src="js/data.js"></script>
+    <script src="js/model.js"></script>
+    <script src="js/ops.js"></script>
+    <script src="js/agency.js"></script>
+    <script src="js/game.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/patch.js"></script>
+    <script src="content/events.js"></script>
+    <script src="content/discoveries.js"></script>
+    <script src="content/realMissions.js"></script>
+    <script src="content/sources.js"></script>
+    <script src="content/tips.js"></script>
+    <script src="js/ui-common.js"></script>
+    <script src="js/ui-cards.js"></script>
+    <script src="js/screen-start.js"></script>
+    <script src="js/screen-newgame.js"></script>
+    <script src="js/screen-hq.js"></script>
+    <script src="js/screen-board.js"></script>
+    <script src="js/screen-design.js"></script>
+    <script src="js/screen-review.js"></script>
+    <script src="js/screen-film.js"></script>
+    <script src="js/screen-results.js"></script>
+    <script src="js/screen-map.js"></script>
+    <script src="js/screen-research.js"></script>
+    <script src="js/screen-archive.js"></script>
+    <script src="js/screen-end.js"></script>
+    <script src="js/screen-classroom.js"></script>
+    <!-- The astronaut (not in index.html yet) -->
+    <script src="js/avatar.js"></script>
+    <script src="js/screen-avatar.js"></script>
+    <script src="js/demo.js"></script>
+    <script src="js/main.js"></script>
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three.module.js" } }
+    </script>
+    <script type="module" src="js/3d/index.js"></script>
+    <script type="module">
+      import { THREE, mount, studioEnv, getRenderer } from './js/3d/engine.js';
+      import { createAstronaut, createWalker, createPortrait, drawPortrait2D } from './js/3d/astronaut.js';
+
+      const SMD = globalThis.SMD;
+      const q = new URLSearchParams(location.search);
+      const view = q.get('view') || 'creator';
+      const freeze = q.has('t') ? Number(q.get('t')) : null;
+
+      const LOOKS = [
+        { name: 'Amira', suit: 'classic', skin: 's4', hair: 'covered', visor: 'clear', patchColor: '#17807a' },
+        { name: 'Omar', suit: 'navy', skin: 's5', hair: 'short', hairColor: 'black', patchColor: '#24539a' },
+        { name: 'Lena', suit: 'lavender', skin: 's1', hair: 'bun', hairColor: 'auburn', patchColor: '#5b4a8a' },
+        { name: 'Kofi', suit: 'orange', skin: 's6', hair: 'curly', hairColor: 'black', patchColor: '#b4302c' },
+        { name: 'Mei', suit: 'teal', skin: 's2', hair: 'helmet', visor: 'clear', patchColor: '#4f7a32' },
+        { name: 'Sam', suit: 'gold', skin: 's3', hair: 'helmet', visor: 'gold', patchColor: '#23282e' },
+      ];
+      const ANIMS = ['walk', 'wave', 'celebrate', 'sad', 'cheer', 'look'];
+
+      function hideApp() {
+        SMD.three.engine.stop();
+        document.getElementById('app').hidden = true;
+      }
+      function stage() {
+        const el = document.createElement('div');
+        el.className = 'at-view';
+        document.body.appendChild(el);
+        return el;
+      }
+      function lights(scene) {
+        scene.add(new THREE.HemisphereLight(0xf7f4ec, 0x9aa49e, 1.1));
+        const sun = new THREE.DirectionalLight(0xfff0d8, 2.5);
+        sun.position.set(3, 6, 5);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 30 });
+        sun.shadow.bias = -0.0004;
+        scene.add(sun);
+        const rim = new THREE.DirectionalLight(0xcfe2ff, 1.4);
+        rim.position.set(-4, 3, -4);
+        scene.add(rim);
+      }
+      function ground(scene, size = 30, color = 0xdfe6e1) {
+        const g = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color, roughness: 0.95 }));
+        g.rotation.x = -Math.PI / 2;
+        g.receiveShadow = true;
+        scene.add(g);
+        const grid = new THREE.GridHelper(size, size, 0xb8c6be, 0xc9d4ce);
+        grid.position.y = 0.001;
+        scene.add(grid);
+      }
+      // Gives the astronaut its animation for the grid.
+      function animate(a, anim, i, target) {
+        if (anim === 'walk') a.setMove(1);
+        else if (anim === 'look') a.lookAt(target);
+        else if (anim !== 'idle') {
+          const loop = () => a.play(anim === 'celebrate' || anim === 'wave' || anim === 'sad' || anim === 'cheer' ? anim : 'wave', { onDone: () => setTimeout(loop, 600) });
+          loop();
+        }
+      }
+
+      async function grid() {
+        hideApp();
+        const el = stage();
+        const labels = document.createElement('div');
+        labels.className = 'at-labels';
+        document.body.appendChild(labels);
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xe6ece8);
+        lights(scene);
+        ground(scene);
+        const env = await studioEnv();
+        scene.environment = env;
+        const close = q.get('cam') === 'close';
+        const heads = q.get('cam') === 'heads';
+        const camera = new THREE.PerspectiveCamera(close ? 20 : 30, 1, 0.05, 100);
+        const look = new THREE.Object3D();
+        look.position.set(2.5, 1.6, 2.5);
+        scene.add(look);
+        const list = LOOKS.map((ap, i) => {
+          const a = createAstronaut(ap);
+          const col = i % 3;
+          const row = Math.floor(i / 3);
+          a.group.position.set((col - 1) * 1.15, 0, row * -1.5);
+          a.group.rotation.y = close ? 0.25 : 0.35;
+          if (heads) {
+            a.group.position.set((i - 2.5) * 0.62, 0, 0);
+            a.group.rotation.y = 0.3;
+          }
+          scene.add(a.group);
+          const anim = q.get('anim') || ANIMS[i];
+          animate(a, anim, i, look);
+          const lab = document.createElement('span');
+          lab.textContent = `${ap.name} · ${anim}`;
+          labels.appendChild(lab);
+          return { a, lab };
+        });
+        const tri = list[0].a.triangles();
+        let W = 1;
+        let H = 1;
+        const tmp = new THREE.Vector3();
+        const obj = {
+          scene,
+          camera,
+          shadows: true,
+          update(dt) {
+            if (freeze === null) list.forEach(({ a }) => a.update(dt));
+            list.forEach(({ a, lab }) => {
+              tmp.set(a.group.position.x, heads ? 1.18 : close ? 1.25 : -0.02, a.group.position.z).project(camera);
+              lab.style.left = ((tmp.x + 1) / 2) * W + 'px';
+              lab.style.top = ((1 - tmp.y) / 2) * H + 'px';
+            });
+          },
+          onResize(w, h) {
+            W = w;
+            H = h;
+            if (heads) {
+              camera.fov = 26;
+              camera.position.set(0, 1.62, 4.2 * Math.max(1, 1.6 / (w / h)));
+              camera.lookAt(0, 1.5, 0);
+              camera.updateProjectionMatrix();
+            } else if (close) {
+              camera.position.set(0, 1.62, 6.4 * Math.max(1, 1.2 / (w / h)));
+              camera.lookAt(0, 1.3, -0.7);
+            } else {
+              camera.position.set(0, 1.9, 6.6 * Math.max(1, 1.25 / (w / h)));
+              camera.lookAt(0, 0.95, -0.8);
+            }
+          },
+        };
+        if (freeze !== null) list.forEach(({ a }) => a.seek(freeze));
+        mount(el, obj);
+        await Promise.all(list.map(({ a }) => a.ready));
+        setTimeout(() => {
+          const r = getRenderer();
+          const info = document.createElement('div');
+          info.className = 'at-info';
+          info.textContent = `one astronaut: ${tri} triangles · scene: ${r.info.render.calls} draw calls, ${r.info.render.triangles} triangles`;
+          document.body.appendChild(info);
+          window.testInfo = { triangles: tri, calls: r.info.render.calls };
+          window.testReady = true;
+        }, 400);
+      }
+
+      async function portraits() {
+        hideApp();
+        const box = document.createElement('div');
+        box.className = 'at-portraits';
+        document.body.appendChild(box);
+        for (const ap of LOOKS) {
+          const f = document.createElement('figure');
+          const img = new Image();
+          img.alt = ap.name;
+          img.src = await createPortrait(ap, 320);
+          f.append(img, Object.assign(document.createElement('figcaption'), { textContent: ap.name }));
+          box.appendChild(f);
+        }
+        for (const ap of LOOKS.slice(0, 3)) {
+          const f = document.createElement('figure');
+          const c = document.createElement('canvas');
+          c.width = c.height = 320;
+          drawPortrait2D(c, ap);
+          f.append(c, Object.assign(document.createElement('figcaption'), { textContent: ap.name + ' (2D fallback)' }));
+          box.appendChild(f);
+        }
+        window.testReady = true;
+      }
+
+      async function campus() {
+        hideApp();
+        const el = stage();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0d9b5);
+        scene.fog = new THREE.Fog(0xf0d9b5, 30, 70);
+        lights(scene);
+        ground(scene, 40, 0xe6d8bf);
+        scene.environment = await studioEnv();
+        // A few "buildings" to walk around, each with a door trigger.
+        const obstacles = [];
+        const doors = [];
+        [[-6, -5, 0x17807a, 'board'], [6, -6, 0xe9dcc4, 'design'], [0, -13, 0xd9a21b, 'archive']].forEach(([x, z, c, id]) => {
+          const b = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 4), new THREE.MeshStandardMaterial({ color: c, roughness: 0.8 }));
+          b.position.set(x, 1.5, z);
+          b.castShadow = b.receiveShadow = true;
+          scene.add(b);
+          obstacles.push({ x, z, r: 2.9 });
+          const door = new THREE.Vector3(x, 0, z + (z < 0 ? 3.3 : -3.3));
+          const mat = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 32), new THREE.MeshBasicMaterial({ color: 0xd9a21b }));
+          mat.rotation.x = -Math.PI / 2;
+          mat.position.copy(door).setY(0.01);
+          scene.add(mat);
+          doors.push({ id, p: door });
+        });
+        const astro = createAstronaut(SMD.avatar.get());
+        scene.add(astro.group);
+        const info = document.createElement('div');
+        info.className = 'at-info';
+        info.textContent = 'Click the ground to walk, WASD to steer, gold rings are doors';
+        document.body.appendChild(info);
+        const walker = createWalker(astro, { area: { minX: -15, maxX: 15, minZ: -15, maxZ: 15 }, obstacles });
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+        const camOff = new THREE.Vector3(0, 4.2, 7.5);
+        const camPos = new THREE.Vector3().copy(camOff);
+        const camLook = new THREE.Vector3(0, 1, 0);
+        const ray = new THREE.Raycaster();
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        el.addEventListener('pointerdown', (e) => {
+          const r = el.getBoundingClientRect();
+          ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+          const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
+          if (hit) walker.goTo(hit.x, hit.z);
+        });
+        const keys = new Set();
+        addEventListener('keydown', (e) => keys.add(e.code));
+        addEventListener('keyup', (e) => keys.delete(e.code));
+        let inside = null;
+        if (q.get('walk') === '1') {
+          const route = [[3, 2], [-5, 1], [-6, -1.7], [0, -9.7], [2, -1]];
+          let k = 0;
+          const next = () => walker.goTo(route[k][0], route[k][1], () => {
+            k = (k + 1) % route.length;
+            if (k === 0) astro.wave();
+            setTimeout(next, 300);
+          });
+          next();
+        }
+        mount(el, {
+          scene,
+          camera,
+          shadows: true,
+          update(dt) {
+            const x = (keys.has('KeyD') ? 1 : 0) - (keys.has('KeyA') ? 1 : 0);
+            const z = (keys.has('KeyS') ? 1 : 0) - (keys.has('KeyW') ? 1 : 0);
+            if (x || z) walker.setInput(x, z);
+            else if (!walker.target) walker.setInput(0, 0);
+            walker.update(dt);
+            const p = astro.group.position;
+            const near = doors.find((d) => Math.hypot(d.p.x - p.x, d.p.z - p.z) < 0.8);
+            if (near && near.id !== inside) {
+              inside = near.id;
+              info.textContent = `Door: ${near.id} (the HQ would open that screen)`;
+            } else if (!near) inside = null;
+            camPos.lerp(new THREE.Vector3().copy(p).add(camOff), Math.min(1, dt * 3));
+            camLook.lerp(new THREE.Vector3(p.x, 1.1, p.z), Math.min(1, dt * 5));
+            camera.position.copy(camPos);
+            camera.lookAt(camLook);
+          },
+        });
+        setTimeout(() => (window.testReady = true), 600);
+      }
+
+      async function far() {
+        hideApp();
+        const el = stage();
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf3cfa4);
+        lights(scene);
+        ground(scene, 200, 0xdcb784);
+        scene.environment = await studioEnv();
+        const list = LOOKS.map((ap, i) => {
+          const a = createAstronaut(ap);
+          a.group.position.set((i - 2.5) * 3, 0, (i % 2) * 3);
+          a.group.rotation.y = 0.4 + i * 0.5;
+          a.setMove(i % 2 ? 1 : 0);
+          scene.add(a.group);
+          return a;
+        });
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 500);
+        camera.position.set(0, 26, 48);
+        camera.lookAt(0, 0, 0);
+        mount(el, { scene, camera, shadows: true, update: (dt) => list.forEach((a) => a.update(dt)) });
+        setTimeout(() => (window.testReady = true), 800);
+      }
+
+      function creator() {
+        const ag = q.get('fresh') === '1' ? SMD.game.newGame('Nile Space Agency') : SMD.quickStartCareer();
+        if (!ag) SMD.quickStartCareer();
+        SMD.go('avatar', { next: 'hq' });
+        setTimeout(() => (window.testReady = true), 1500);
+      }
+
+      ({ grid, portraits, campus, far, creator }[view] || creator)();
+    </script>
+  </body>
+</html>
