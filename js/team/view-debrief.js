@@ -1038,7 +1038,7 @@
 
       // ---------- Mission review (js/team/mission-review.js) ----------
       // NASA's systems-engineering view of the flight: the four segments, the concept
-      // maturity level, a ConOps timeline, your ship against the real mission, and a short
+      // CML-inspired learning progress, a ConOps timeline, your ship against the real mission, and a short
       // learning check. All numbers come from the sim; nothing here changes the score.
       const R = team.review;
       const LEARN_KEY = 'ek-learning-log';
@@ -1079,10 +1079,10 @@
           <dl class="tf-seg-lines">${g.lines.map((l) => `<div><dt>${esc(l.label)}</dt><dd>${esc(l.value)}</dd></div>`).join('')}</dl>
         </section>`).join('')}</div>`;
       const cmlHtml = (rv) => `<div class="tf-cml">
-          <p class="tf-cml-kick">${esc(t('team.rev.cml.kick', 'Concept maturity'))}: <strong>CML ${rv.cml.level}/4</strong> <span>${esc(rv.cml.levels[rv.cml.level - 1].name)}</span></p>
+          <p class="tf-cml-kick">${esc(t('team.rev.cml.kick', 'Game progress inspired by JPL CML'))}: <strong>${esc(t('team.rev.cml.progress', 'Step {n} of 4', { n: rv.cml.level }))}</strong> <span>${esc(rv.cml.levels[rv.cml.level - 1].name)}</span></p>
           <ol class="tf-cml-steps">${rv.cml.levels.map((l) => `<li class="${l.reached ? 'tf-on' : ''}" title="${esc(l.what)}"><b>${l.id}</b><span>${esc(l.name)}</span></li>`).join('')}</ol>
-          ${rv.cml.next ? `<p class="tf-cml-next">${esc(t('team.rev.cml.next', 'Next: {n}', { n: rv.cml.next.name }))}. ${esc(rv.cml.next.hint)}</p>` : `<p class="tf-cml-next">${esc(t('team.rev.cml.done', 'Point design reached.'))}</p>`}
-          <p class="tf-mdl">${esc(t('team.rev.mdl.kick', 'Study level (NASA Mission Design Lab)'))}: <strong>${esc(rv.mdl.name)}</strong>. ${esc(rv.mdl.what)}</p>
+          ${rv.cml.next ? `<p class="tf-cml-next">${esc(t('team.rev.cml.next', 'Next: {n}', { n: rv.cml.next.name }))}. ${esc(rv.cml.next.hint)}</p>` : `<p class="tf-cml-next">${esc(t('team.rev.cml.done', 'All four game progress steps are complete.'))}</p>`}
+          <p class="tf-mdl">${esc(t('team.rev.mdl.kick', 'Study type inspired by NASA MDL (analogy)'))}: <strong>${esc(rv.mdl.name)}</strong>. ${esc(rv.mdl.what)}</p>
         </div>`;
 
       async function actReview() {

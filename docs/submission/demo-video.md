@@ -58,23 +58,23 @@ The times are on the demo's own clock (the wall clock in this cut).
 
 | Time | Official beat | On screen | Subtitle (burned in) |
 |---|---|---|---|
-| 0:00.0–0:01.6 | Who you are | Full-screen card: "Who we are", then **Team [name]** in display type, with the members' names underneath if given. | (The card is the text.) |
+| 0:00.0–0:01.6 | Who you are | Full-screen card: "Who we are", then **Jet and Brains** in display type. Member names omitted at the team's request. | (The card is the text.) |
 | 0:01.6–0:03.6 | The challenge and why | Card: "NASA Space Apps Challenge 2026 · Space Mission Design Game". Headline: "A space mission is a chain of trade-offs. We made a game where you live them." | (The card is the text.) |
 | 0:03.6–0:05.4 | Title and tagline | The real title screen: Every Kilogram, "Design a spacecraft, fly it, and bring back the science. Every kilogram counts.", Play and Play with friends. | Every Kilogram: design a spacecraft, fly it, bring back the science. |
 | 0:05.4–0:06.6 | How it works | Crew: four astronauts with their jobs; the gold ring picks Salma Fawzy, mission planner ("You"). | Pick your astronaut and a real destination. KILO, your guide, explains the mission. |
 | 0:06.6–0:07.6 | How it works | Destination: six worlds with their science questions; the ring picks Mars ice mapper. | (same) |
 | 0:07.6–0:09.0 | How it works | Briefing: the Mars card ("Goal: find and drill Martian ice") and KILO typing its first line. | (same) |
-| 0:09.0–0:10.2 | How it works, NASA data | Build, part 1 of 6, Orbit: two orbit cards with diagrams and ✓/✗ lines; the ring picks the low polar orbit. The 3D spacecraft over Mars and the mass, power and comms meters beside it. | Build it one part at a time, with numbers from real NASA missions. |
-| 0:10.2–0:11.4 | How it works | Part 2, Power: the ring picks the 14 m² panels; the panels on the 3D ship grow and the power and mass meters move. | (same) |
-| 0:11.4–0:12.6 | How it works | Part 3, Instruments: the ring adds the radar sounder, then the telescopic camera ("3 of 3 fitted"). The remaining parts are set off screen. | (same) |
-| 0:12.6–0:13.8 | How it works | The question: "What matters most on this mission?" with *Find the ice* and *Choose the landing site*, each with how well the ship fits; the ring picks *Find the ice*. | Then decide what counts as success. |
+| 0:09.0–0:10.2 | How it works | Success criterion: choose *Find the ice* or *Choose the landing site* before the build. | First choose what counts as success. |
+| 0:10.2–0:11.4 | How it works, NASA data | Build, part 1 of 6, Orbit: two orbit cards with diagrams and ✓/✗ lines; the ring picks the low polar orbit. The 3D spacecraft over Mars and the mass, power and comms meters beside it. | Build it one part at a time, with numbers from real NASA missions. |
+| 0:11.4–0:12.6 | How it works | Part 2, Power: the ring picks the 14 m² panels; the panels on the 3D ship grow and the power and mass meters move. | (same) |
+| 0:12.6–0:13.8 | How it works | Part 3, Instruments: the ring adds the radar sounder, then the telescopic camera ("3 of 3 fitted"). The remaining parts are set off screen. | (same) |
 | 0:13.8–0:15.4 | How it works | The capsule: the 3D cabin with KILO, the crew strip on top and the first line of the conversation. | Meet your crew, then launch. (top of the screen) |
 | 0:15.4–0:18.6 | How it works | Flight: countdown, liftoff, stage separation, then the spacecraft in orbit with the battery, recorder and science graphs. | The flight is simulated: sunlight, battery, data and radio passes. (top) |
 | 0:18.6–0:20.2 | How it works | Landing on Mars: the descent over the landing zone, altitude and descent speed. | Land, explore, and scan with the instruments you packed. |
 | 0:20.2–0:21.8 | How it works | On the surface, top-down: the crew at the science sites, the objectives list and the clock. | (same) |
 | 0:21.8–0:23.4 | How it works | At the lander door, night: "Too heavy to lift off", keep 1 of 3 ice samples, 19 of 22 kg; samples go overboard, then liftoff. | Too heavy to get home? Throw science overboard. |
 | 0:23.4–0:26.6 | How it works | Results: "Why it happened", the dominoes falling one by one with their lines. | Then see why it worked, change one thing, and fly again. (top) |
-| 0:26.6–0:30.0 | The future and close | Closing card: KILO, **Every Kilogram**, the tagline, "Play free in the browser · [link]", "Solo or up to four players · English and Arabic", "Next: classroom trials with teachers.", the team name. | (The card is the text.) |
+| 0:26.6–0:30.0 | The future and close | Closing card: KILO, **Every Kilogram**, the tagline, "Playable link coming soon", "Solo or up to four players · English and Arabic", "Next: classroom trials with teachers.", **Jet and Brains**. | (The card is the text.) |
 
 `demo-30.srt` has the same lines as a subtitle file. Upload it to YouTube as English captions as well as keeping the burned-in subtitles.
 

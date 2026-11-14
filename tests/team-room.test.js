@@ -26,6 +26,8 @@ function toDesign(n = 4, opts) {
   let s = act(made.s, 'host', 'start');
   assert.strictEqual(s.phase, 'brief');
   s = Room.tick(s, 2000);
+  assert.strictEqual(s.phase, 'questions');
+  s = act(s, made.ids[0], 'forward');
   assert.strictEqual(s.phase, 'design');
   return { s, ids: made.ids };
 }
@@ -111,15 +113,15 @@ test('phones cannot perform host actions or pose as someone else', () => {
   assert.notStrictEqual(planner, s.roles.engineer);
 });
 
-test('brief: picks set the requirement and everyone picking starts the design', () => {
+test('brief leads to a pre-build success criterion, then spacecraft design', () => {
   let { s, ids } = setup(2);
   s = act(s, 'host', 'start');
+  s = Room.tick(s, 2000);
+  assert.strictEqual(s.phase, 'questions');
   s = act(s, ids[0], 'pick', { requirement: 'wide' });
-  assert.strictEqual(s.phase, 'brief');
-  s = act(s, ids[1], 'pick', { objective: 'map' });
+  s = act(s, ids[0], 'forward');
   assert.strictEqual(s.phase, 'design');
   assert.strictEqual(s.design.requirement, 'wide');
-  assert.strictEqual(s.objectiveId, 'map');
 });
 
 test('a configured design clock is authoritative (older rooms and tests)', () => {
@@ -136,8 +138,11 @@ test('by default there is no clock: not in the briefing, the build, or the revie
     s = act(s, 'local', 'start', {}, 10);
     assert.strictEqual(s.phase, 'brief');
     s = Room.tick(s, 10 * 60 * 1000);
-    assert.strictEqual(s.phase, 'brief', 'the briefing waits');
-    s = act(s, 'local', 'next', {}, 20);
+    assert.strictEqual(s.phase, 'brief', 'the briefing has no default timer');
+    s = act(s, 'local', 'next', {}, s.now + 5);
+    assert.strictEqual(s.phase, 'questions', 'the criterion choice follows the briefing');
+    s = act(s, 'local', 'pick', { requirement: s.requirementId }, s.now + 5);
+    s = act(s, 'local', 'next', {}, s.now + 5);
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(Room.viewFor(s, 'local').clock, null);
     assert.strictEqual(Room.tick(s, 60 * 60 * 1000).phase, 'design', 'the build waits');
@@ -147,6 +152,7 @@ test('by default there is no clock: not in the briefing, the build, or the revie
 test('Flight director gets a soft clock that only says overtime', () => {
   let s = Room.create({ mode: 'solo', seed: 3, scenarioId: 'moon', difficulty: 'director' });
   s = act(s, 'local', 'start', {}, 0);
+  s = act(s, 'local', 'next', {}, 0);
   s = act(s, 'local', 'next', {}, 0);
   const v = Room.viewFor(s, 'local', 1000);
   assert.ok(v.clock && v.clock.soft && v.clock.leftS > 60);
@@ -471,6 +477,7 @@ test('solo: one seat holds all four panels and bot crewmates ask for things', ()
   assert.ok(ROLES.every((r) => s.roles[r] === 'local'));
   s = act(s, 'local', 'start');
   s = Room.tick(s, 2000);
+  s = act(s, 'local', 'next');
   assert.strictEqual(s.phase, 'design');
   const v = Room.viewFor(s, 'local');
   assert.strictEqual(v.me.roles.length, 4);
@@ -487,6 +494,7 @@ test('solo: a crisis shows both halves, and a crewmate may rescue a slow player'
   let s = Room.create({ mode: 'solo', seed: 3, scenarioId: 'moon', timing: TIMING });
   s = act(s, 'local', 'start');
   s = Room.tick(s, 2000);
+  s = act(s, 'local', 'next');
   s = act(s, 'local', 'vote', { yes: true });
   s = Room.tick(s, s.armedAt + 1);
   assert.strictEqual(s.phase, 'flight');
@@ -526,6 +534,7 @@ test('surface: solo is one person and three bots, one screen seats local pads', 
     let s = Room.create({ seed: 3, scenarioId: 'moon', timing: TIMING, ...opts });
     s = act(s, 'local', 'start');
     s = Room.tick(s, 2000);
+    s = act(s, 'local', 'next');
     s = act(s, 'local', 'vote', { yes: true });
     s = Room.tick(s, s.armedAt + 1);
     return finishFlight(s);
@@ -772,7 +781,8 @@ test('a whole Moon round on the real simulation, including the surface hand-off'
     let { s, ids } = setup(4, { scenarioId: landing.id, timing: { ...TIMING, designMs: 180000, flightMs: 75000, fixedFlight: false } });
     s = act(s, 'host', 'start');
     assert.ok(s.requirementId, 'a real requirement is preselected');
-    for (const id of ids) s = act(s, id, 'pick');
+    for (const id of ids) s = act(s, id, 'pick', { requirement: s.requirementId });
+    s = act(s, ids[0], 'forward');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.design.scenario, landing.id);
     assert.ok(s.resources.mass && s.resources.power, 'real dashboard');
@@ -894,6 +904,9 @@ test('the build goes one step at a time and Back never loses a choice', () =>
     let s = Room.create({ mode: 'solo', seed: 3, scenarioId: 'mars', difficulty: 'engineer' });
     s = act(s, 'local', 'start');
     s = act(s, 'local', 'forward');
+    assert.strictEqual(s.phase, 'questions');
+    s = act(s, 'local', 'pick', { requirement: 'sites' });
+    s = act(s, 'local', 'forward');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.buildStep, 0);
     const steps = Sim.buildSteps('mars', 'engineer');
@@ -904,18 +917,12 @@ test('the build goes one step at a time and Back never loses a choice', () =>
     assert.ok(s.last.ok, s.last.text);
     s = act(s, 'local', 'back');
     s = act(s, 'local', 'back');
-    assert.strictEqual(s.phase, 'brief', 'back from the first step is the briefing');
+    assert.strictEqual(s.phase, 'questions', 'back from the first step returns to the success criterion');
     s = act(s, 'local', 'forward');
     assert.strictEqual(s.design.picks.orbit, 'polar300', 'kept through Back');
     assert.strictEqual(s.design.picks.panels, 'tj8');
     for (let i = 0; i < steps.length; i++) s = act(s, 'local', 'forward');
-    assert.strictEqual(s.phase, 'questions');
-    s = act(s, 'local', 'pick', { requirement: 'sites' });
-    assert.strictEqual(s.design.requirement, 'sites', 'the question sets the design requirement');
-    s = act(s, 'local', 'forward');
     assert.strictEqual(s.phase, 'lock');
-    s = act(s, 'local', 'back');
-    assert.strictEqual(s.phase, 'questions');
     s = act(s, 'local', 'back');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.buildStep, steps.length - 1, 'back from the questions is the last build step');
@@ -930,10 +937,10 @@ test('Fix it: the review can jump to a step, and a launch still needs every key'
     let s = Room.create({ mode: 'solo', seed: 3, scenarioId: 'mars', difficulty: 'engineer' });
     s = act(s, 'local', 'start');
     s = act(s, 'local', 'forward');
+    s = act(s, 'local', 'forward');
     const last = Sim.buildSteps('mars', 'engineer').length - 1;
     s = act(s, 'local', 'stepTo', { index: last });
     s = act(s, 'local', 'build', { step: 'rocket', option: 'light' });
-    s = act(s, 'local', 'forward');
     s = act(s, 'local', 'forward');
     assert.strictEqual(s.phase, 'lock');
     const r = act(s, 'local', 'vote', { yes: true });
@@ -941,7 +948,6 @@ test('Fix it: the review can jump to a step, and a launch still needs every key'
     s = act(s, 'local', 'stepTo', { index: last });
     assert.strictEqual(s.phase, 'design');
     s = act(s, 'local', 'build', { step: 'rocket', option: 'medium' });
-    s = act(s, 'local', 'forward');
     s = act(s, 'local', 'forward');
     s = act(s, 'local', 'vote', { yes: true }, 100);
     assert.ok(s.armedAt);
@@ -962,6 +968,8 @@ test('multiplayer: the step owner picks, others suggest, and only the owner or h
     s = act(s, bea, 'setRole', { role: 'planner', crew: 'kofi' });
     assert.strictEqual(act(s, host, 'setRole', { role: 'engineer', crew: 'kofi' }).last.code, 'crew-taken', 'one person per character');
     s = act(s, host, 'start');
+    s = act(s, host, 'forward');
+    s = act(s, host, 'pick', { requirement: s.requirementId });
     s = act(s, host, 'forward');
     assert.strictEqual(s.phase, 'design');
     assert.strictEqual(s.roles.planner, bea, 'the orbit step belongs to the planner');

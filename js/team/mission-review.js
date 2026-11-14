@@ -4,8 +4,8 @@
 // sim already computed into the ideas NASA's own mission-design resources teach:
 //   - the four mission SEGMENTS (launch, space, ground, user) from "Design and Develop
 //     Science Missions",
-//   - the Concept Maturity Level (CML 1-4) the team's design reached (JPL),
-//   - the Mission Design Lab study level that matches the difficulty (NASA MDL),
+//   - game progress labels inspired by JPL's Concept Maturity Levels (CML),
+//   - a study-type analogy inspired by NASA's Mission Design Lab (MDL),
 //   - "your ship vs the real mission" (numbers from content/realMissions.js),
 //   - a ConOps timeline of the flight, and
 //   - a short learning check with a teacher CSV.
@@ -100,6 +100,7 @@
         lines: [
           { label: T('team.rev.l.question', 'Science question'), value: req },
           { label: T('team.rev.l.sci', 'Science returned'), value: sci === null ? '\u2013' : `${fmt(sci)}%` },
+          { label: T('team.rev.l.meaning', 'What this result means'), value: T('team.rev.science.meaning', 'This is simulated, requirement-weighted coverage from useful data returned. Surface science contributes separately to the score on landing missions.') },
         ],
         keys: ['requirement'],
       },
@@ -108,8 +109,9 @@
     return list;
   }
 
-  // ---------- 2. Concept Maturity Level ----------
-  // CML 1 an idea, CML 2 feasible, CML 3 trade studies, CML 4 point design.
+  // ---------- 2. Game progress inspired by Concept Maturity Levels ----------
+  // Game-specific progress inspired by early CML language; not a NASA CML assessment.
+  // The simplified game steps are idea, feasibility, compare/refly, and all checks passed.
   const cmlNames = () => [
     null,
     { id: 1, name: T('team.rev.cml.1', 'Mission idea'), what: T('team.rev.cml.1.w', 'You picked a science question worth flying.') },
@@ -142,8 +144,8 @@
     return { level, levels, next };
   }
 
-  // ---------- 3. Mission Design Lab level for each difficulty ----------
-  // NASA's MDL studies run from quick brainstorming up to a point design.
+  // ---------- 3. Mission Design Lab study-type analogy for each difficulty ----------
+  // These names are an educational analogy, not a NASA MDL study assessment.
   function mdl(difficultyId) {
     const m = {
       sandbox: { id: 'office', name: T('team.rev.mdl.office', 'Office Hours'), what: T('team.rev.mdl.office.w', 'Quick brainstorming with no limits.') },

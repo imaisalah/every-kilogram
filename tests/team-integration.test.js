@@ -102,7 +102,10 @@ test('the room ascent reads the real rack and what was left behind', () => {
   let r = Room.create({ mode: 'solo', seed: 5, scenarioId: 'moon', timing: { flightHoldMs: 0, landingMs: 500, flightMs: 500, fixedFlight: true, surfaceMaxMs: 3000, ascentMs: 500 } });
   r = Room.reduce(r, { type: 'start', by: 'local' }, 100);
   r = Room.reduce(r, { type: 'next', by: 'local' }, 200);
-  r = Room.reduce(r, { type: 'lock', by: 'local' }, 300);
+  const requirement = Sim.scenarios().find((x) => x.id === 'moon').requirements[0].id;
+  r = Room.reduce(r, { type: 'pick', by: 'local', requirement }, 250);
+  r = Room.reduce(r, { type: 'next', by: 'local' }, 300);
+  r = Room.reduce(r, { type: 'lock', by: 'local' }, 350);
   r = Room.reduce(r, { type: 'next', by: 'local' }, 400);
   assert.strictEqual(r.phase, 'flight');
   r = Room.reduce(r, { type: 'next', by: 'local' }, 500);
@@ -166,6 +169,10 @@ test('a whole v2 round on the real simulation: setup steps, every build step, qu
     a('forward');
     assert.strictEqual(r.phase, 'brief');
     a('forward');
+    assert.strictEqual(r.phase, 'questions');
+    const req = Sim.scenarios().find((x) => x.id === sc).requirements[0];
+    a('pick', { requirement: req.id });
+    a('forward');
     const steps = Sim.buildSteps(sc, 'engineer');
     for (const st of steps) {
       assert.strictEqual(Room.viewFor(r, 'local').buildStep, steps.indexOf(st));
@@ -174,10 +181,6 @@ test('a whole v2 round on the real simulation: setup steps, every build step, qu
       if (pick && !st.multi) a('build', { step: st.id, option: pick.id });
       a('forward');
     }
-    assert.strictEqual(r.phase, 'questions');
-    const req = Sim.requirementFit(r.design).sort((x, y) => y.fit - x.fit)[0];
-    a('pick', { requirement: req.id });
-    a('forward');
     assert.strictEqual(r.phase, 'lock');
     const hard = r.checks.filter((c) => c.hard && !c.ok);
     if (hard.length) {

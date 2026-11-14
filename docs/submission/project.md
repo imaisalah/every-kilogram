@@ -3,9 +3,11 @@
 Copy each section below into the matching field of the Space Apps project page. Everything is in English, as the rules require. Text in `[square brackets]` is for the team to fill in. Work through `checklist.md` in this folder before submitting.
 
 - **Challenge:** Space Mission Design Game
-- **Team:** `[team name]`, `[local event, city, country]`
-- **Link to Project Demo:** `[YouTube link to the 30-second video]` (how to record it: `demo-video.md`)
-- **Link to Final Project:** `[public repository URL]` and `[playable URL]`
+- **Team:** Jet and Brains
+- **Team members:** Omitted at the team's request.
+- **Local event:** Not provided.
+- **Link to Project Demo:** Not available yet.
+- **Link to Final Project:** [GitHub repository](https://github.com/imaisalah/every-kilogram). `[Add playable URL when available.]`
 
 ---
 
@@ -15,7 +17,7 @@ Every Kilogram
 
 ## High-Level Project Summary
 
-Every Kilogram is a free 3D browser game where you design a space mission, fly it and bring the science home, alone or as a crew of up to four. Pick a destination with a real science question, then build the spacecraft one part at a time: orbit, power, instruments, radio, landing kit and a rocket that must lift it all. Every choice moves six budgets: mass, power, money, data, communications and time. The mission is then simulated: sunlight and shadow, battery, data and radio passes, crises to fix. On the Moon, Mars, Venus and Europa the crew lands, scans sites and decides which samples the fuel can lift home. Finally a chain of falling dominoes, computed by re-flying the mission, shows why it worked or failed, and you fly again with one change. It runs in English and Arabic on a school laptop.
+Every Kilogram is a free 3D browser game where you design a space mission, fly it and bring the science home, alone or as a crew of up to four. Choose a destination and science result to count as success before building a spacecraft: orbit, power, instruments, radio, landing kit and a rocket that must lift it all. Every choice moves six budgets: mass, power, money, data, communications and time. The mission is then simulated: sunlight and shadow, battery, data and radio passes, crises to fix. On the Moon, Mars, Venus and Europa the crew lands, scans sites and decides which samples the fuel can lift home. Finally a chain of falling dominoes, computed by re-flying the mission, shows why it worked or failed, and you fly again with one change. It runs in English and Arabic on a school laptop.
 
 (141 words)
 
@@ -27,7 +29,7 @@ The challenge asks for a game in which players define an objective, set requirem
 
 | The challenge asks for | In Every Kilogram |
 |---|---|
-| **Objective and requirements** | Each destination is a mission with a real science question and an objective ("Astronauts will need water. Where is ice hiding just under the Martian dust?"; goal: find and drill Martian ice). After the build, the crew answers the mission question: which requirement counts as success (for Mars: *Find the ice* or *Choose the landing site*). Each choice shows how well the ship they built covers it, as a percentage, before they commit. The requirement changes how the science is weighted and scored. |
+| **Objective and requirements** | Each destination begins with a real science question and objective ("Astronauts will need water. Where is ice hiding just under the Martian dust?"; goal: find and drill Martian ice). Before spacecraft design, the crew chooses the measurable result that counts as success (for Mars: *Find the ice* or *Choose the landing site*). This requirement sets how science is weighted and scored, so teams can design toward it from the start. |
 | **Spacecraft components** | The build is one component per step, with at most three cards each: orbit, power source (silicon or high-efficiency panels, or RTGs at Jupiter), batteries, instruments, antenna and radio, data recorder, computer and pointing, mission length, landing kit (ascent fuel, spare oxygen, drill) and the rocket. Each card lists plain ✓/✗ lines computed from its real numbers ("Most power: 1,484 W", "Heaviest of the three") with its mass, power and cost. The 3D spacecraft changes as soon as a card is picked. |
 | **Instruments** | Eleven instruments sized like real ones (camera, wide imager, infrared spectrometer, radar sounder, ice-penetrating radar, synthetic-aperture radar, neutron spectrometer, magnetometer, radio science, laser altimeter). Each serves some science objectives and not others, and the same instruments are the only tools that can scan the matching science sites on the surface. |
 | **Launch vehicles, with capacity checks** | Light, medium and heavy launcher classes. Lift capacity depends on the target orbit and on the departure energy (C3) for deep-space missions; the rocket step comes last, when the mass is known, and shows which rockets can lift the ship. The review blocks a launch the rocket cannot physically make and says why. Everything else is allowed to fly and fail. |
@@ -41,7 +43,7 @@ The challenge asks for a game in which players define an objective, set requirem
 | **Scenarios** | Six: Nile from orbit (farmland and thirsty crops) and Storm watcher (Saharan dust storms) are Earth-orbit training flights; Lunar water hunter, Mars ice mapper, Venus cloud explorer (a floating cloud-top platform, after NASA's HAVOC concept) and Europa ice explorer land a crew. |
 | **Difficulty levels** | Cadet (up to six build steps, 25% more money, two problems in flight), Engineer (up to nine steps, the real trade-offs, three problems), Flight director (up to ten steps, a tighter budget, four problems, hidden flaws such as a weak radio amplifier or a mirror ground slightly wrong, and a soft clock). |
 | **Random events** | Problems and opportunities in flight (solar storm, failing battery cell, saturated reaction wheels, data flood, fuel leak, lost ground contact, frozen computer, a once-in-a-decade event below, free ground-station time), each with a short window and one right fix. Hidden flaws on Flight director. On the surface: dust storms, sulfuric haze on Venus, radiation spikes, moonquakes and icequakes with falling rocks, and cold nights. All are planned from the round's seed, so a re-fly meets the same events. |
-| **NASA's mission segments and maturity levels** | After the score, a **Mission review** shows the flight through NASA's four mission segments (launch, space, ground, user), the Concept Maturity Level the design reached (CML 1 idea, 2 feasibility, 3 trade studies, 4 point design, JPL's scale) and the NASA Mission Design Lab study level that matches the difficulty. A ConOps timeline lists the mission's phases. |
+| **NASA mission-process references** | After the score, a **Mission review** shows the flight through NASA's four mission segments (launch, space, ground, user), a simplified learning ladder inspired by JPL's CML framework, and a study-type analogy inspired by NASA's Mission Design Lab. These are educational analogies, not NASA CML ratings or MDL studies. A ConOps timeline lists the mission's phases. |
 | **Your ship vs the real mission** | The review compares launch mass, power and cost with the real NASA mission for that destination (Landsat 9, Terra, LRO, MRO, Magellan, Europa Clipper), with its NASA source and a link to NASA Eyes. |
 | **Real space weather** | The "Solar storm!" problem names a real event from NASA's pages (May 2024, July 2012, October 2003) and, when the browser is online, the strongest flare NASA's DONKI service lists in the last 30 days. The physics is unchanged; offline it uses the saved events. |
 | **Learning check and teacher log** | Three short questions chosen from what happened in the flight, and a CSV of every flight (mission, score, concept level, quiz result, no names) for teachers. `docs/CLASSROOM.md` is a 45-minute lesson plan. |
@@ -100,16 +102,34 @@ Each source below drives a specific part of the game. The links are also in the 
 | Science@NASA: Near Miss, the Solar Superstorm of July 2012 | https://science.nasa.gov/science-news/science-at-nasa/2014/23jul_superstorm/ | The second real event named on the solar-storm problem. |
 | DONKI (Space Weather Database Of Notifications, Knowledge, Information) | https://ccmc.gsfc.nasa.gov/tools/DONKI/ | The optional live lookup of the strongest solar flare in the last 30 days, shown on the solar-storm problem when the browser is online (`js/team/real-data.js`). |
 | NASA Eyes on the Solar System | https://eyes.nasa.gov/ | Linked from the Mission review so players can see real missions in 3D. A link only; no data is loaded from it. |
-| "Design and Develop Science Missions" (the four mission segments), NASA Mission Design Lab and JPL Concept Maturity Levels (resources listed on the challenge's Resources tab) | `[paste the Resources-tab URLs for these three]` | The structure of the Mission review: segments, CML 1-4 and the study level for each difficulty. |
+| NASA *Design and Develop Science Missions* webinar (PDF supplied with the project) | https://www.nasa.gov/wp-content/uploads/2025/04/250323-design-and-develop-science-mission.pdf | Mission segments, ConOps, and the science-need → requirements → design sequence. The game now asks the team to choose its success criterion before spacecraft design. |
+| JPL Concept Maturity Levels paper (PDF supplied with the project) | https://dataverse.jpl.nasa.gov/dataset.xhtml?persistentId=hdl:2014/44299 | Inspiration for the CML-inspired learning ladder. The game does not claim to conduct a NASA CML assessment. |
+| NASA Mission Design Lab | https://etd.gsfc.nasa.gov/capabilities/integrated-design-center/mission-design-lab/ | Inspiration for the difficulty-linked study-type analogy. The game does not claim to perform an MDL study. |
+| General Mission Analysis Tool (GMAT) | https://software.nasa.gov/software/GSC-19468-1 | Focused external validation of simplified Earth-orbit periods. GMAT is not integrated into the game. See `docs/VALIDATION.md` for run status, version, assumptions and results. |
 | NASA mishap reports, LLIS and mission pages | links in `js/team/data.js` (`ANALOGS`, `SURFACE_ANALOGS`) | Real missions named on the tombstone when a mission dies the same way: Mars Global Surveyor, Skylab, Telstar 1, Spirit, Galileo, Mars Observer, Mars Climate Orbiter, Kepler, Mars Polar Lander, Hubble, CONTOUR, Pioneer 10, Genesis, Apollo 13, Opportunity. Hidden flaws on Flight director borrow Hubble's mirror and Lucy's solar array. |
 | NASA Earth Observatory Blue Marble; NASA SVS CGI Moon Kit (LRO) | https://earthobservatory.nasa.gov/ · https://svs.gsfc.nasa.gov/4720 | Earth and the Moon in the flight and in the surface skies. |
 | Viking Mars mosaic (NASA/USGS, via NASA Trek); Cassini Jupiter map (PIA07782); Voyager/Galileo Europa mosaic (NASA/JPL, USGS) | https://trek.nasa.gov/mars/ · https://science.nasa.gov/photojournal · https://astrogeology.usgs.gov/ | Mars, Jupiter and Europa in the flight and in the surface skies. |
 
 ## Space Agency Partner & Other Data
 
-- **ESA:** the Beagle 2 lander page (https://sci.esa.int/web/mars-express/-/55263-beagle-2-lander-found-on-mars) is the source for one tombstone story (a lander whose panels never fully opened). No partner dataset drives a mechanic yet. `[If the team wires in a dataset from the challenge's Resources tab, add it here.]`
+- **ESA:** the Beagle 2 lander page (https://sci.esa.int/web/mars-express/-/55263-beagle-2-lander-found-on-mars) is the source for one tombstone story (a lander whose panels never fully opened). No partner dataset drives a mechanic at this time.
 - **USGS Astrogeology Science Center:** processed Europa and Mars maps (public domain).
 - **Other sources for failure stories:** Scientific American (Mars Global Surveyor, Telstar 1), The Planetary Society (Spirit), SpacePolicyOnline (Kepler), Sky & Telescope (Opportunity), each linked in `js/team/data.js`.
+
+## Educational and visualization references
+
+The [Space Apps challenge Resources tab](https://www.spaceappschallenge.org/2026/challenges/space-mission-design-game/?tab=resources) lists these optional references. They informed presentation or were reviewed as examples; they are not datasets or integrations unless stated above.
+
+| Reference | Use in this project |
+|---|---|
+| NASA Webb [*Build It Yourself*](https://science.nasa.gov/mission/webb/game-build-it-yourself/) activity and attached `Satlite_Options.pdf` transcript | Science-goal-first design pattern; informs the order of the success-criterion choice and spacecraft build. |
+| NASA Webb [*Scope It Out*](https://science.nasa.gov/mission/webb/game-scope-it-out/) activity and supplied transcript | Reviewed as a telescope-teaching example; no specific game mechanic or data was adopted. |
+| NASA [Mission Viz](https://nasa.github.io/mission-viz/) and supplied `mission-viz-main.zip` | Reviewed as a 3D mission-visualization reference; the game uses its own visualization code and does not include Mission Viz code. |
+| NASA [CubeSat 101](https://www3.nasa.gov/sites/default/files/atoms/files/nasa_csli_cubesat_101_508.pdf) | Reviewed for context; the game is not a CubeSat development trainer and does not use the guide as a source for its mission model. |
+| NASA Level 1, Level 2 and Level 3 Science PDFs | Reviewed for science-result presentation patterns; the game does not reproduce their results as outputs from the simulated missions. |
+| Canadian Space Agency [Digital Games and Activities](https://www.asc-csa.gc.ca/eng/youth-educators/digital-games-and-activities.asp) | Reviewed as a catalog of educational design examples; no CSA dataset is integrated. |
+
+**Supplied-PDF source check:** the NASA systems-engineering webinar and JPL CML paper directly inform the mission flow and the explicitly “inspired by” progress labels. `Satlite_Options.pdf` was used as a science-goal-first design reference. The Scope It Out transcript, Level 1–3 Science PDFs, and CubeSat 101 guide were reviewed but are not sources for current game mechanics or simulated results.
 - **Code:** three.js r160 (MIT), PeerJS 1.5.4 (MIT; uses the free public PeerJS broker and Google's public STUN servers), qrcode-generator 1.4.4 (MIT), the Draco decoder (Apache 2.0), the meshoptimizer decoder (MIT). Playwright Core (Apache 2.0) for development only.
 - **Characters:** Quaternius Universal Base Characters and Universal Animation Library, CC0.
 - **Fonts:** Archivo and Noto Kufi Arabic, SIL Open Font License 1.1.
@@ -126,7 +146,7 @@ Each source below drives a specific part of the game. The links are also in the 
   - most of the JavaScript, HTML and CSS: the simulations (`js/team/sim.js`, `js/team/surface-sim.js`), the room and network code, all screens and the 3D scenes;
   - first drafts of the game text, KILO's and the crew's lines, the Arabic translation and this submission text;
   - research summaries compiled from the NASA pages they cite (`docs/research/`).
-- **What the team did:** decided what the game is and redesigned it after playtesting (the "calm, one step at a time" version in `docs/TEAM-V2.md` came from our own play sessions), reviewed the design, played every version and checked the facts. `[Team: add who reviewed what, and any part you wrote or changed by hand.]`
+  - **What the team did:** decided what the game is and redesigned it after playtesting (the "calm, one step at a time" version in `docs/TEAM-V2.md` came from our own play sessions), reviewed the design, played every version and checked the facts. Individual review assignments and hand-authored contributions were not provided.
 - **What SI did not generate:** no images, video, audio or 3D models taken from an image or video generator. Planet maps are NASA and USGS material; the characters are CC0 models by Quaternius; KILO, the spacecraft and the worlds are drawn by code; all sound is synthesized by code. The demo video is a screen recording of the game playing itself.
 - **How we checked the output:** automated tests in Node (`tests/team-*.test.js`: the simulation, balance targets, the room state machine, networking, the surface, KILO's scripts, the flight and the interface); a bot balance search over thousands of designs (`docs/TEAM-BALANCE.md`); headless-browser screenshots of every screen with the console checked for errors; and links and numbers checked against the cited sources. Numbers simplified for play are stated as such.
 - **Rules we kept:** no NASA logos or mission insignia, no SI-generated imagery presented as NASA's, and we never write "according to NASA" for text that we or an SI tool wrote.

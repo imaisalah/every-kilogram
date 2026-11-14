@@ -14,8 +14,8 @@ Every step has a Back button, and Pause (or Esc) works everywhere. A slim bar at
 2. **Pick your crew:** four original astronauts, each with a job: mission planner, engineer, scientist, communications. Your job is the part of the ship you build.
 3. **Pick a destination:** six missions, each with a real science question. Nile from orbit and Storm watcher are training flights in Earth orbit; on the Moon, Mars, Venus (a floating cloud-top platform) and Europa the crew lands.
 4. **KILO's briefing:** what this mission is for, in three or four lines.
-5. **Build one part at a time:** orbit, power, batteries, instruments, antenna and radio, data recorder, computer and pointing, mission length, landing kit, and last the rocket, once the mass is known (Cadet shows six of these steps). Each step has at most three cards with plain pros and cons and their mass, power and cost. Your pick changes the 3D spacecraft at once, and the six resources (mass, power, budget, data, comms, time) move with it.
-6. **Answer the mission questions:** now that you know your ship, choose what counts as success. KILO says how well your ship fits each answer.
+5. **Choose the success criterion:** before building, choose the science result that counts as success. The chosen criterion guides the spacecraft design.
+6. **Build one part at a time:** orbit, power, batteries, instruments, antenna and radio, data recorder, computer and pointing, mission length, landing kit, and last the rocket, once the mass is known (Cadet shows six of these steps). Each step has at most three cards with plain pros and cons and their mass, power and cost. Your pick changes the 3D spacecraft at once, and the six resources (mass, power, budget, data, comms, time) move with it.
 7. **Review and launch:** one summary card. Anything that will not work gets a one-line reason and a "Fix it" button that jumps back to that step. A rocket that cannot lift the ship to its orbit is never allowed to launch.
 8. **Meet the crew:** a short conversation in the capsule, where each crewmate introduces themselves. Skippable.
 9. **Fly:** the launch, then the mission plays out in about a minute: the real orbit in 3D, sunlight and shadow, battery, recorder, radio passes and science coming home. Problems and chances come up, and they must be fixed in time.
@@ -26,10 +26,10 @@ Every step has a Back button, and Pause (or Esc) works everywhere. A slim bar at
 
 ## New in the hackathon build
 
-- **Mission review** after the score (and from the **Mission review** button): the four NASA mission segments (launch, space, ground, user), the Concept Maturity Level reached (CML 1-4), the NASA Mission Design Lab study level for the difficulty, a ConOps timeline, and your ship against the real NASA mission.
+- **Mission review** after the score (and from the **Mission review** button): the four NASA mission segments (launch, space, ground, user), game progress inspired by JPL's CML concepts, a study-type analogy inspired by NASA's Mission Design Lab, a ConOps timeline, and your ship against the real NASA mission. These progress labels are educational analogies, not NASA maturity or study assessments.
 - **Real space weather:** the solar-storm problem names a real event from NASA pages and, online, the strongest flare in NASA's DONKI service over the last 30 days (`js/team/real-data.js`).
 - **Learning check and teacher log:** three questions from what happened in the flight; a CSV of every flight kept in the browser. See `docs/CLASSROOM.md`.
-- **Validation:** `node tools/validate-orbits.mjs` checks the game's orbit maths against an independent calculation and real missions (`docs/VALIDATION.md`); `docs/gmat/` has a GMAT script to confirm it with NASA's tool.
+- **Validation:** `node tools/validate-orbits.mjs` checks the game's orbit maths against an independent calculation and real missions (`docs/VALIDATION.md`); `docs/gmat/` documents a focused GMAT orbit-period cross-check (report actual run status there).
 
 ## Ways to play
 
@@ -64,7 +64,7 @@ Everything ships in this folder: three.js, the NASA maps, the characters and the
 
 ## Controls
 
-- **Setup, build, questions, review, results:** mouse or touch; every button is also reachable with Tab and Enter. Space moves KILO to its next line. Esc or the Pause button opens Pause: Resume, Back one step, Restart mission (host), Quit to title.
+- **Setup, success criterion, build, review, results:** mouse or touch; every button is also reachable with Tab and Enter. Space moves KILO to its next line. Esc or the Pause button opens Pause: Resume, Back one step, Restart mission (host), Quit to title.
 - **Capsule:** Skip, or click, Space or Enter to go faster.
 - **Flight:** when a problem comes up, press the right fix before the ring runs out. With friends, the alarm and the fix are usually on different players' screens, so someone has to shout.
 - **Surface, your own screen (Solo, own devices):** third person over the shoulder by default. Click to capture the mouse and look around; WASD moves relative to the camera; Shift sprints; hold E (or Space) in a glowing ring to scan, plant the dish or align it; tap E to pick up or set down a sample; Q uses your job's ability (the planner holds it to call everyone home); V switches to first person; H shows help. At the lander, number keys or X throw a sample overboard. Gamepad: left stick moves, right stick looks, A uses, X ability, Y view, left-stick click sprints, Start pauses.
@@ -110,7 +110,7 @@ js/
     room.js             the authoritative room: phases, roles, Back, Pause
     net.js, net-webrtc.js  local, LAN relay and WebRTC transports
     crew.js, guide*.js  the four astronauts and KILO
-    view-setup.js       setup, briefing, build, questions, review, tracker, pause menu
+    view-setup.js       setup, briefing, success criterion, build, review, tracker, pause menu
     view-flight.js, flight3d.js     the cabin and the flight
     surface-sim.js, view-surface.js, surface3d*.js   landing, surface, ascent
     view-debrief.js     dominoes, score, mission review, quiz, verdict, report, challenge links

@@ -1,6 +1,6 @@
 // Mission Sprint v2 (docs/TEAM-V2.md): the setup views (lobby: room, difficulty,
 // crew, destination; brief: KILO's briefing; design: the build, one part per step;
-// questions; lock: review and launch), the mission tracker and the pause menu
+// questions (success criterion before design); lock: review and launch), the mission tracker and the pause menu
 // every phase shares, and the kit of visual parts. Loads on the phone too, so it
 // must not need three.js, SMD.ui or any screen-only code.
 (function () {
@@ -869,14 +869,14 @@
   kit.canSteer = canSteer;
 
   // ---------- The mission tracker ----------
-  const STAGES = ['crew', 'destination', 'build', 'questions', 'launch', 'flight', 'surface', 'home'];
-  const STAGE_W = { crew: 6, destination: 6, build: 30, questions: 6, launch: 6, flight: 18, surface: 22, home: 6 };
+  const STAGES = ['crew', 'destination', 'questions', 'build', 'launch', 'flight', 'surface', 'home'];
+  const STAGE_W = { crew: 6, destination: 6, questions: 6, build: 30, launch: 6, flight: 18, surface: 22, home: 6 };
   const stageName = (id) =>
     ({
       crew: t('team.track.crew', 'Crew'),
       destination: t('team.track.destination', 'Destination'),
       build: t('team.track.build', 'Build'),
-      questions: t('team.track.questions', 'Questions'),
+      questions: t('team.track.questions', 'Success criterion'),
       launch: t('team.track.launch', 'Launch'),
       flight: t('team.track.flight', 'Flight'),
       surface: t('team.track.surface', 'Surface'),
@@ -900,7 +900,7 @@
         if (step === 'destination') return { stage: 'destination', sub: 0.2 };
         return { stage: 'crew', sub: step === 'crew' ? 0.6 : step === 'difficulty' ? 0.3 : 0 };
       case 'brief':
-        return { stage: 'build', sub: 0 };
+        return { stage: 'questions', sub: 0 };
       case 'design': {
         const n = Math.max(1, stepsOf(v).length);
         return { stage: 'build', sub: clamp01(((v.buildStep || 0) + 0.5) / n) };
@@ -1405,7 +1405,7 @@
       function draw() {
         const v = ctx.view;
         const steer = canSteer(v);
-        setFoot(el, { back: steer, next: steer, hideNext: !steer, hideBack: !steer, nextLabel: t('team.v2.startbuild', 'Start building'), msg: steer ? '' : waitMsg(v) });
+        setFoot(el, { back: steer, next: steer, hideNext: !steer, hideBack: !steer, nextLabel: t('team.v2.startbuild', 'Set success criterion'), msg: steer ? '' : waitMsg(v) });
         showError(v);
       }
       el.addEventListener('click', (e) => {
@@ -1628,7 +1628,7 @@
           hideBack: !steer,
           hideNext: !steer,
           backLabel: i === 0 ? t('team.v2.tobriefing', 'Briefing') : t('team.back', 'Back'),
-          nextLabel: last ? t('team.v2.toquestions', 'Next: the questions') : t('team.v2.nextstep', 'Next: {name}', { name: steps[i + 1].title }),
+          nextLabel: last ? t('team.v2.toreview', 'Next: review and launch') : t('team.v2.nextstep', 'Next: {name}', { name: steps[i + 1].title }),
           msg,
         });
         showError(v);
@@ -1667,15 +1667,16 @@
     },
   };
 
-  // ---------- The questions: what the mission is for, now that the ship exists ----------
+  // ---------- Choose the measurable success criterion before spacecraft design ----------
   views.questions = {
     mount(el, ctx) {
       const s = sc(ctx);
       el.innerHTML = pageHTML(
         'ts-questions',
         `<p class="ts-eyebrow">${esc(t('team.v2.q.k', 'The question'))}</p>
-        <h1>${esc(t('team.v2.q.h', 'What matters most on this mission?'))}</h1>
+        <h1>${esc(t('team.v2.q.h', 'What will count as mission success?'))}</h1>
         <p class="ts-lede">${esc(s.question || '')}</p>
+        <p class="ts-question-note">${esc(t('team.v2.q.note', 'Choose the science result to prioritize. Your spacecraft design will be built around this requirement.'))}</p>
         <div class="ts-choices two" data-reqs></div>
         <div class="ts-kilo-slot wide" data-kilo></div>`
       );
@@ -1684,28 +1685,23 @@
       const showError = errorWatcher(el);
       function draw() {
         const v = ctx.view;
-        if (!v || !v.design) return;
-        const fits = ctx.sim.requirementFit(v.design);
-        const sel = v.design.requirement || v.requirementId;
-        el.querySelector('[data-reqs]').innerHTML = fits
-          .map((f) => {
-            const pct = Math.round(f.fit * 100);
-            const word = pct >= 75 ? t('team.v2.fit.good', 'Your ship fits this well') : pct >= 40 ? t('team.v2.fit.ok', 'Your ship can do this, just') : t('team.v2.fit.poor', 'Your ship would struggle');
-            return `<button type="button" class="ts-choice ${f.id === sel ? 'on' : ''}" data-req="${esc(f.id)}"><b>${esc(f.title)}</b><span>${esc(f.text)}</span><span class="ts-fit"><span class="ts-fit-bar"><i style="inline-size:${pct}%"></i></span><small>${esc(word)} · ${esc(t('team.v2.fit.pct', 'covers {n}%', { n: ltr(pct) }))}</small></span></button>`;
-          })
+        if (!v) return;
+        const choices = s.requirements || [];
+        const sel = v.requirementId;
+        el.querySelector('[data-reqs]').innerHTML = choices
+          .map((f) => `<button type="button" class="ts-choice ${f.id === sel ? 'on' : ''}" data-req="${esc(f.id)}" aria-pressed="${f.id === sel ? 'true' : 'false'}"><b>${esc(f.title)}</b><span>${esc(f.text)}</span></button>`)
           .join('');
         if (sel !== lastSel || !said) {
-          const f = fits.find((x) => x.id === sel);
+          const f = choices.find((x) => x.id === sel);
           if (f) {
-            const kind = f.fit >= 0.75 ? 'fit.good' : f.fit >= 0.4 ? 'fit.ok' : 'fit.poor';
-            const lines = (said ? [] : kiloLines(s.id, 'questions')).concat(kiloLines(s.id, kind, { name: f.title }));
+            const lines = (said ? [] : kiloLines(s.id, 'questions')).concat(kiloLines(s.id, 'requirement', { name: f.title }));
             kiloSay(el.querySelector('[data-kilo]'), lines, { inline: true, keep: true, auto: true, size: 64 });
             said = true;
           }
           lastSel = sel;
         }
         const steer = canSteer(v);
-        setFoot(el, { back: steer, next: steer, hideBack: !steer, hideNext: !steer, backLabel: t('team.v2.tobuild', 'Back to the build'), nextLabel: t('team.v2.toreview', 'Review the ship'), msg: steer ? '' : waitMsg(v) });
+        setFoot(el, { back: steer, next: steer, hideBack: !steer, hideNext: !steer, backLabel: t('team.v2.tobriefing', 'Back to briefing'), nextLabel: t('team.v2.tobuild', 'Start spacecraft design'), msg: steer ? '' : waitMsg(v) });
         showError(v);
       }
       el.addEventListener('click', (e) => {

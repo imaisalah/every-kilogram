@@ -36,7 +36,7 @@
     'step.schedule': [['deadpan', 'The schedule. Rushing saves months. It also lets mistakes slip through.']],
     'step.landing': [['thinking', 'The landing kit: oxygen, a drill, and fuel to get back up. Every sample must fit in the ride home.']],
     'step.other': [['neutral', 'Pick one. Watch what it does to the mass, power and money.']],
-    questions: [['thinking', 'Now you know your ship. Choose what it will do: the goal it is good at, not the one that sounds best.']],
+    questions: [['thinking', 'Before we design the ship, choose which science result counts as success.']],
     objective: [['neutral', 'The objective is the main question. Pick one your instruments can answer.']],
     requirement: [['neutral', 'The requirement is how good is good enough. Stricter means more points, and more ways to miss.']],
     'fit.good': [['happy', '{name}: your ship is built for this.']],

@@ -69,8 +69,8 @@ test('the tracker only ever moves forward through a whole mission, and ends at 1
     { phase: 'lobby', setupStep: 'crew' },
     { phase: 'lobby', setupStep: 'destination' },
     { phase: 'brief' },
-    ...Array.from({ length: n }, (_, i) => ({ phase: 'design', buildStep: i })),
     { phase: 'questions' },
+    ...Array.from({ length: n }, (_, i) => ({ phase: 'design', buildStep: i })),
     { phase: 'lock' },
     { phase: 'cabin' },
     { phase: 'flight', flight: { progress: 0.1 } },
@@ -88,7 +88,7 @@ test('the tracker only ever moves forward through a whole mission, and ends at 1
     last = pr.pct;
   }
   assert.strictEqual(last, 100);
-  assert.deepStrictEqual(kit.progressOf({ ...base, phase: 'surface' }).stages, ['crew', 'destination', 'build', 'questions', 'launch', 'flight', 'surface', 'home']);
+  assert.deepStrictEqual(kit.progressOf({ ...base, phase: 'surface' }).stages, ['crew', 'destination', 'questions', 'build', 'launch', 'flight', 'surface', 'home']);
   const earth = kit.progressOf({ ...base, scenarioId: 'nile', phase: 'flight', flight: { progress: 0.5 } });
   assert.ok(!earth.stages.includes('surface'), 'training flights have no surface stage');
   const lo = kit.progressOf({ ...base, phase: 'surface' }, 0.1).pct;

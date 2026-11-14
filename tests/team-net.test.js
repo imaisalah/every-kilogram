@@ -160,7 +160,11 @@ test('whole round over real WebSockets: host and four phones', async () => {
     assert.ok(host.send({ type: 'start' }));
     await until(() => phones.every((p) => p.view.phase === 'brief'), 'brief on phones');
 
-    phones.forEach((p, i) => p.send({ type: 'pick', requirement: i === 0 ? 'wide' : undefined }));
+    phones.forEach((p) => p.send({ type: 'pick' }));
+    await until(() => phones.every((p) => p.view.phase === 'questions'), 'criterion choice on phones');
+    phones[0].send({ type: 'pick', requirement: 'wide' });
+    await until(() => phones.every((p) => p.view.requirementId === 'wide'), 'criterion sync on phones');
+    host.send({ type: 'next' });
     await until(() => phones.every((p) => p.view.phase === 'design'), 'design on phones');
     assert.strictEqual(host.state.design.requirement, 'wide');
 
@@ -306,6 +310,10 @@ test('a phone asleep past the grace period gets its seat back from the bot', asy
     for (const name of ['A', 'B']) phones.push(await joined(s, host, name));
     host.send({ type: 'start' });
     phones.forEach((p) => p.send({ type: 'pick' }));
+    await until(() => phones.every((p) => p.view.phase === 'questions'), 'criterion choice');
+    phones[0].send({ type: 'pick', requirement: 'wide' });
+    await until(() => phones.every((p) => p.view.requirementId === 'wide'), 'criterion sync');
+    host.send({ type: 'next' });
     await until(() => host.state.phase === 'design', 'design');
     const sleeper = phones[1];
     const id = sleeper.playerId;
@@ -331,7 +339,11 @@ test('host refresh: phones wait, then carry on with the same game', async () => 
     const b = await joined(s, host, 'B');
     host.send({ type: 'start' });
     a.send({ type: 'pick' });
+    b.send({ type: 'pick' });
+    await until(() => a.view.phase === 'questions' && b.view.phase === 'questions', 'criterion choice');
     b.send({ type: 'pick', requirement: 'wide' });
+    await until(() => a.view.requirementId === 'wide' && b.view.requirementId === 'wide', 'criterion sync');
+    host.send({ type: 'next' });
     await until(() => host.state.phase === 'design', 'design');
     await until(() => JSON.parse(sessionStorage.getItem('ek.team.host') || '{}').state?.phase === 'design', 'snapshot saved', 12000);
     const code = host.code;
@@ -380,6 +392,9 @@ test('local transport: the same interface with no network', async () => {
   assert.strictEqual(session.view.phase, 'brief');
   assert.ok(seen.includes('brief'));
   session.send({ type: 'pick' });
+  assert.strictEqual(session.state.phase, 'questions');
+  session.send({ type: 'pick', requirement: 'sharp' });
+  session.send({ type: 'next' });
   assert.strictEqual(session.state.phase, 'design');
   session.send({ type: 'vote', yes: true });
   await until(() => session.state.phase === 'flight', 'countdown', 12000);

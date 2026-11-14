@@ -11,7 +11,7 @@ Screenshots: record `#demo` (see `demo-video.md`) and take stills from it, or us
 - **Every Kilogram**
 - *Design a spacecraft, fly it, and bring back the science. Every kilogram counts.*
 - NASA Space Apps Challenge 2026 · Space Mission Design Game
-- Team `[name]` · `[members]` (leave out the names of members under 18) · `[local event]`
+- Team **Jet and Brains** · member names omitted at the team's request · local event not provided
 - Image: the title screen, or KILO beside the Mars ice mapper briefing card.
 
 ## Slide 2: The problem
@@ -22,8 +22,8 @@ Screenshots: record `#demo` (see `demo-video.md`) and take stills from it, or us
 
 ## Slide 3: Build it one part at a time
 
-- Image: the Power step, three cards with ✓/✗ lines, the 3D spacecraft and the resource bar beside them.
-- Ten parts, one per step, at most three choices each: orbit, power, batteries, instruments, antenna and radio, recorder, computer, mission length, landing kit, and the rocket last, once the mass is known.
+- Image: the pre-build success-criterion choice, then the Power step, three cards with ✓/✗ lines, the 3D spacecraft and the resource bar beside them.
+- Choose the science result that counts as success first. Then make spacecraft choices one part per step, at most three cards each: orbit, power, batteries, instruments, antenna and radio, recorder, computer, mission length, landing kit, and rocket.
 - Every pick changes the ship you see and its mass, power, budget, data, comms and time.
 - Real numbers: the rocket equation, sunlight falling with distance squared, the DSN link equation, instruments sized like MRO's, LRO's, Magellan's and Europa Clipper's.
 
@@ -53,7 +53,7 @@ Screenshots: record `#demo` (see `demo-video.md`) and take stills from it, or us
 
 - Free, in the browser, no account, runs on a school laptop, English and Arabic. Six missions, including two about Egypt's own Nile and dust storms.
 - Next: classroom trials with teachers, more destinations, live data where it adds the most.
-- Link: `[playable URL]` · Code: `[repository URL]` (Apache-2.0)
+- Playable URL: not available yet · Code: [GitHub repository](https://github.com/imaisalah/every-kilogram) (Apache-2.0)
 - Credit line: "Imagery courtesy of NASA, NASA/JPL-Caltech and USGS. Use does not imply NASA endorsement."
 
 ---
@@ -62,11 +62,11 @@ Screenshots: record `#demo` (see `demo-video.md`) and take stills from it, or us
 
 About 150 words at a calm pace. The words in *italics* are cues for what to show.
 
-> *[Title screen]* We're `[team]`, and this is **Every Kilogram**.
+> *[Title screen]* We're **Jet and Brains**, and this is **Every Kilogram**.
 >
 > A space mission is a chain of trade-offs. A heavier camera needs more fuel, a bigger rocket, more money. Students hear that. In our game they live it.
 >
-> *[Crew and destination]* You pick an astronaut, a world and a real science question. *[Build]* Then you build the spacecraft one part at a time, and every part moves your mass, power, budget, data and time, using real NASA numbers.
+> *[Crew and destination]* You pick an astronaut and a world with a real science question. Before you build, choose the result that counts as success. *[Build]* Then each spacecraft choice moves mass, power, budget, data and time, using real NASA numbers.
 >
 > *[Flight]* The mission is simulated. Batteries drain in shadow, data waits for a radio pass, and problems need fixing fast, often by a teammate.
 >

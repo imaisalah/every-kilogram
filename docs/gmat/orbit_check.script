@@ -1,5 +1,5 @@
 %  Every Kilogram: period of three circular Earth orbits, for comparison with docs/VALIDATION.md.
-%  Untested template (see docs/gmat/README.md).
+%  Focused two-body cross-check. Run notes and measured values: docs/VALIDATION.md.
 
 Create Spacecraft Landsat;
 GMAT Landsat.DateFormat = UTCGregorian;

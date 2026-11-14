@@ -12,10 +12,10 @@
 //         hazards:'anomalies'|'realistic', localSeats, timing:{...ms overrides} }
 //
 // Phases (docs/TEAM-V2.md):
-//   lobby -> brief -> design -> questions -> lock -> cabin -> flight -> landing -> surface -> ascent -> debrief
+//   lobby -> brief -> questions -> design -> lock -> cabin -> flight -> landing -> surface -> ascent -> debrief
 //   The lobby has its own steps (setupStep): room (own devices / phones only) -> difficulty -> crew -> destination.
 //   brief is KILO's briefing. design is the build, one step at a time (buildStep, steps from
-//   sim.buildSteps). questions picks the requirement. lock is the review and launch. cabin is the
+//   sim.buildSteps). questions sets the success criterion before the build. lock is the review and launch. cabin is the
 //   crew conversation (only when timing.cabinMs > 0; `next` skips it).
 //   Earth scenarios and missions that die in flight go flight -> debrief.
 //   There is no design clock any more; Flight director gets a soft one (view.clock.soft).
@@ -337,18 +337,18 @@
     }
     if (s.phase === 'design') {
       if (s.buildStep > 0) s.buildStep--;
-      else setPhase(s, 'brief', 0);
+      else setPhase(s, 'questions', 0);
       return undefined;
     }
     if (s.phase === 'questions') {
-      s.buildStep = Math.max(0, buildSteps(s).length - 1);
-      setPhase(s, 'design', 0);
+      setPhase(s, 'brief', s.timing.briefMs);
       return undefined;
     }
     if (s.phase === 'lock') {
       s.votes = {};
       s.armedAt = 0;
-      setPhase(s, 'questions', 0);
+      s.buildStep = Math.max(0, buildSteps(s).length - 1);
+      setPhase(s, 'design', 0);
       return undefined;
     }
     return reject('no-back', 'You cannot go back now.');
@@ -365,14 +365,14 @@
       }
       return handlers.start(s, a);
     }
-    if (s.phase === 'brief') return enterDesign(s);
+    if (s.phase === 'brief') return enterQuestions(s);
     if (s.phase === 'design') {
       const n = buildSteps(s).length;
       if (s.buildStep < n - 1) s.buildStep++;
-      else enterQuestions(s);
+      else enterLock(s);
       return undefined;
     }
-    if (s.phase === 'questions') return enterLock(s);
+    if (s.phase === 'questions') return enterDesign(s);
     return reject('wrong-phase', 'Not now.');
   }
 
@@ -1071,7 +1071,7 @@
       if (a.objective !== undefined) s.objectiveId = String(a.objective);
       if (a.requirement !== undefined) s.requirementId = String(a.requirement);
       if (s.phase === 'questions') {
-        // Chosen after the build: the ship is already there to judge it by.
+      // The science success criterion is set before spacecraft design.
         if (s.design && a.requirement !== undefined) {
           const next = attempt(() => sim().setRequirement(s.design, s.requirementId), null);
           if (!next || next.error) return reject('bad-requirement', 'No such goal.');
@@ -1080,10 +1080,10 @@
         }
         return undefined;
       }
-      // The briefing: once everyone is ready, the build starts.
+      // Briefing readiness advances the crew to the success-criterion choice.
       s.picks[a.by] = { objective: s.objectiveId, requirement: s.requirementId };
       const voters = isLocalMode(s) ? ['local'] : present(s).map((p) => p.id);
-      if (voters.every((id) => s.picks[id])) enterDesign(s);
+      if (voters.every((id) => s.picks[id])) enterQuestions(s);
     },
 
     set(s, a) {
@@ -1201,7 +1201,7 @@
     },
     next(s, a) {
       if (s.phase === 'lobby') return handlers.start(s, a);
-      if (s.phase === 'brief') return enterDesign(s);
+      if (s.phase === 'brief') return enterQuestions(s);
       if (s.phase === 'design' || s.phase === 'questions') return goForward(s, a);
       if (s.phase === 'lock') {
         if (hardFailures(s).length) return reject('hard-check', hardFailures(s)[0].text);
@@ -1351,7 +1351,7 @@
     switch (s.phase) {
       case 'brief':
         if (expired) {
-          enterDesign(s);
+          enterQuestions(s);
           changed = true;
         }
         break;

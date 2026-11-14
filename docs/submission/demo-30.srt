@@ -1,6 +1,6 @@
 1
 00:00:00,000 --> 00:00:01,600
-Who we are: [Team name]
+Who we are: Jet and Brains
 
 2
 00:00:01,600 --> 00:00:03,600
@@ -16,12 +16,12 @@ Every Kilogram: design a spacecraft, fly it, bring back the science.
 Pick your astronaut and a real destination. KILO, your guide, explains the mission.
 
 5
-00:00:09,000 --> 00:00:12,600
-Build it one part at a time, with numbers from real NASA missions.
+00:00:09,000 --> 00:00:10,200
+First choose what counts as success.
 
 6
-00:00:12,600 --> 00:00:13,800
-Then decide what counts as success.
+00:00:10,200 --> 00:00:13,800
+Build it one part at a time, with numbers from real NASA missions.
 
 7
 00:00:13,800 --> 00:00:15,400
@@ -45,5 +45,5 @@ Then see why it worked, change one thing, and fly again.
 
 12
 00:00:26,600 --> 00:00:30,000
-Every Kilogram. Play free in the browser: [link]
+Every Kilogram. Play free in the browser: link pending
 Next: classroom trials with teachers.

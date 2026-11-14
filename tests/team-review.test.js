@@ -43,11 +43,11 @@ test('the user segment follows how the mission ended', () => {
   assert.equal(mk('fail'), 'bad');
 });
 
-test('concept maturity: no launch means CML 1, a second flight means CML 3, a clean flight means CML 4', () => {
+test('CML-inspired game progress follows its simplified game checks', () => {
   const d = sim.newDesign('moon', 'engineer');
   const f = sim.fly(d, 11);
   assert.ok(R.cml(sim, d, f.result, 0).level >= 2, 'a launchable design is at least feasible');
-  assert.equal(R.cml(sim, d, { ...f.result, success: 'fail' }, 1).level, 3, 'compared two flights');
+  assert.equal(R.cml(sim, d, { ...f.result, success: 'fail' }, 1).level, 3, 'game progress uses its round counter, not a NASA trade-study assessment');
   // Break the hard launch check by choosing the smallest rocket for a heavy mission.
   const heavy = sim.newDesign('europa', 'engineer');
   const cat = sim.catalog('europa', 'engineer');

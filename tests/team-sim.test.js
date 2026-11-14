@@ -536,7 +536,7 @@ test('cards carry plain pros and cons and the numbers that matter', () => {
   assert.equal(rocket.find((c) => c.id === 'light').flies, false);
 });
 
-test('the requirement is chosen after the build, and the fit follows the instruments', () => {
+test('requirement fit follows the instruments, and changing it preserves the design', () => {
   const d = sim.newDesign('mars', 'engineer', 'ice');
   const fit = sim.requirementFit(d);
   assert.deepEqual(fit.map((f) => f.id), ['ice', 'sites']);
