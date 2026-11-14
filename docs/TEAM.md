@@ -1,6 +1,6 @@
 # Mission Sprint: the team game (binding spec)
 
-The official challenge text changed the brief. It asks for a game where participants **define an objective, set requirements, design a spacecraft, pick instruments, launch vehicle and orbit, manage budget, mass, power, communications, data and lifetime, simulate, evaluate, change the design and simulate again**, alone or as **a team of up to four with different roles who must negotiate**. Main game = this. *Last Light* (docs/LASTLIGHT.md) is a side mode from the title.
+The official challenge's direct objective is an interactive game where participants design, manage and simulate a complete mission, make engineering decisions, manage limited resources, and evaluate how choices shape mission success. Its **Potential Considerations** section presents detailed features (objectives and requirements, components, resource dashboards, solo/team modes up to four, repeat simulations and post-mission analysis) as optional ideas, not mandatory specifications. This game chooses to implement many of them. *Last Light* (docs/LASTLIGHT.md) is a side mode from the title.
 
 The user's two demands: **it must never be boring, and it must be creative.** Earlier versions failed by having too many systems, too much reading, and no clear next action.
 

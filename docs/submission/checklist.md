@@ -12,8 +12,8 @@ Work through this list before the deadline (11:59 p.m. local time, 15 Nov 2026; 
 
 ## 2. Challenge resources
 
-- [ ] Open the challenge's **Resources** tab and re-read the official challenge statement. Match the wording of the summary to it.
-- [ ] For each NASA or partner dataset listed there: if the game uses it, add it to the NASA Data or partner table in `project.md`, with the URL and the mechanic it drives. Do not list a dataset the game does not use.
+- [x] Review the official challenge statement and **Resources** tab content supplied by the team. The summary now reflects the direct objective and labels the listed Potential Considerations as optional.
+- [ ] For each NASA or partner dataset the game actually uses, ensure `project.md` lists its URL and the mechanic it drives. Do not label a software tool or educational reference as an integrated dataset.
 
 ## 3. Public repository
 

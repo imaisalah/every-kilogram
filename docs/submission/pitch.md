@@ -18,7 +18,7 @@ Screenshots: record `#demo` (see `demo-video.md`) and take stills from it, or us
 
 - Headline: **A space mission is a chain of trade-offs, and students rarely get to make them.**
 - A heavier camera needs more fuel, a bigger rocket and more money. A smaller dish leaves science on the recorder. In a classroom these links stay abstract.
-- The challenge asks for a game where players define an objective, design the spacecraft, pick instruments, rocket and orbit, manage six budgets, simulate, evaluate and fly again, alone or as a team of up to four.
+- The direct challenge objective is an interactive game for designing, managing and simulating a complete mission under engineering and resource constraints. Specific features such as objective/requirement selection and teams of up to four are optional considerations from the brief; our game includes them.
 
 ## Slide 3: Build it one part at a time
 
