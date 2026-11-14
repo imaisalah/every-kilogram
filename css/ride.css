@@ -1,0 +1,731 @@
+/* The crewed ride (js/screen-ride.js): a night screen over the 3D view.
+   HUD on the edges, crew calls in the middle, captions at the bottom. */
+
+.ride {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: #000;
+  color: var(--chalk);
+  --ride-red: #ff4b3e;
+}
+
+.ride-stage {
+  position: absolute;
+  inset: 0;
+  touch-action: manipulation;
+}
+
+.ride-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 58%, rgba(0, 0, 0, 0.5) 100%);
+}
+/* Looking out of the window at the far side: a rounded window frame. */
+.ride.window .ride-vignette {
+  background: radial-gradient(ellipse 62% 64% at 50% 46%, transparent 84%, rgba(12, 16, 22, 0.94) 92%);
+}
+
+/* Alarm: a red pulse at the edges (steady with reduced motion). */
+.ride-tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.ride.alarm .ride-tint {
+  opacity: 1;
+  box-shadow: inset 0 0 120px 30px rgba(255, 50, 40, 0.55);
+  animation: ride-alarm 0.9s steps(2, jump-none) infinite;
+}
+.ride.caution .ride-tint {
+  opacity: 1;
+  box-shadow: inset 0 0 110px 20px rgba(240, 180, 41, 0.45);
+}
+.ride-tint.white {
+  background: #fff4e8;
+  transition: none;
+}
+@keyframes ride-alarm {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.ride-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #fff;
+  opacity: 0;
+}
+.ride-flash.on {
+  animation: ride-flash 0.28s ease-out;
+}
+@keyframes ride-flash {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Fades between shots; black for the end of a lost flight. */
+.ride::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+.ride.fading::after {
+  animation: ride-fade 0.9s ease;
+}
+.ride.black::after {
+  animation: ride-black 1.2s ease forwards;
+}
+@keyframes ride-fade {
+  45% {
+    opacity: 1;
+  }
+}
+@keyframes ride-black {
+  to {
+    opacity: 0.92;
+  }
+}
+
+/* ---------- Head ---------- */
+.ride-head {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 12px;
+  padding: 14px 20px 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.ride-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 0;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+.ride-tag {
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--gold);
+}
+.ride-title h1 {
+  font-size: var(--step-2);
+  font-stretch: 70%;
+  font-weight: 850;
+  line-height: 1.05;
+}
+.ride-sub {
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ride-sub b {
+  color: var(--chalk);
+}
+.ride-met {
+  font-size: var(--step-3);
+  font-weight: 800;
+  font-stretch: 75%;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.8);
+  direction: ltr;
+}
+.ride-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+/* ---------- Gauges (left) ---------- */
+.ride-gauges {
+  position: absolute;
+  inset-inline-start: 20px;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  background: rgba(10, 16, 23, 0.62);
+  border: 1px solid rgba(233, 238, 242, 0.14);
+  z-index: 2;
+}
+.ride[data-phase='walk'] .ride-gauges,
+.ride[data-phase='flyby'] .ride-gauges {
+  opacity: 0;
+}
+.ride-gmeter {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+.ride-gbar {
+  position: relative;
+  display: block;
+  inline-size: 16px;
+  block-size: 150px;
+  border-radius: 8px;
+  background: rgba(233, 238, 242, 0.1);
+  overflow: hidden;
+}
+.ride-gbar i {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline: 0;
+  block-size: 12%;
+  background: linear-gradient(to top, var(--night-ok), #9ee6dd);
+  border-radius: 8px;
+  transition: block-size 0.15s linear;
+}
+.ride-gbar.hi i {
+  background: linear-gradient(to top, var(--night-warn), var(--ride-red));
+}
+.ride-gbar s {
+  position: absolute;
+  inset-inline: -2px;
+  inset-block-end: var(--at);
+  border-top: 1px dashed rgba(233, 238, 242, 0.5);
+}
+.ride-gmeter b {
+  font-size: var(--step-2);
+  font-weight: 800;
+  font-stretch: 75%;
+  direction: ltr;
+}
+.ride-gmeter small {
+  font-size: 0.72rem;
+  color: var(--chalk-2);
+  max-inline-size: 7em;
+  text-align: center;
+  line-height: 1.2;
+}
+.ride-read {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+.ride-read dt {
+  font-size: 0.72rem;
+  color: var(--chalk-2);
+}
+.ride-read dd {
+  margin: 0;
+  font-size: var(--step-1);
+  font-weight: 700;
+  min-inline-size: 6.5em;
+}
+
+/* ---------- Countdown and big words ---------- */
+.ride-count {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 22%;
+  text-align: center;
+  font-size: clamp(3.5rem, 12vw, 8rem);
+  font-weight: 900;
+  font-stretch: 70%;
+  color: var(--chalk);
+  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 2;
+}
+.ride-count.show {
+  opacity: 1;
+}
+.ride-count.tick {
+  transform: scale(1.25);
+  transition: none;
+}
+.ride-count.big {
+  font-size: clamp(2.4rem, 8vw, 5.5rem);
+  color: var(--gold);
+}
+
+/* ---------- Captions ---------- */
+.ride-caption {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 26px;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
+  pointer-events: none;
+  z-index: 2;
+}
+.ride-cap {
+  max-inline-size: 640px;
+  padding: 12px 18px 14px;
+  border-radius: var(--radius-m);
+  background: rgba(10, 16, 23, 0.78);
+  border: 1px solid rgba(233, 238, 242, 0.16);
+  border-inline-start: 4px solid var(--chalk-2);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.ride-caption.show .ride-cap {
+  opacity: 1;
+  transform: none;
+}
+.ride-cap.ok {
+  border-inline-start-color: var(--night-ok);
+}
+.ride-cap.warn {
+  border-inline-start-color: var(--night-warn);
+}
+.ride-cap.bad {
+  border-inline-start-color: var(--night-bad);
+}
+.ride-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ride-cap h2 {
+  font-size: var(--step-1);
+  font-weight: 800;
+  margin-block: 2px 4px;
+}
+.ride-cap p:last-child {
+  font-size: 0.94rem;
+  line-height: 1.4;
+  color: #d4dce3;
+}
+
+/* ---------- Crew calls ---------- */
+.ride-prompt {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 58%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  z-index: 4;
+  pointer-events: none;
+}
+.ride-prompt-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 52px;
+  padding: 10px 20px 10px 12px;
+  border-radius: 999px;
+  border: 2px solid var(--gold);
+  background: rgba(16, 25, 34, 0.9);
+  color: var(--chalk);
+  font: inherit;
+  font-size: var(--step-1);
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 0 0 0 rgba(217, 162, 27, 0.6);
+  animation: ride-call 1.2s ease-out infinite;
+}
+.ride-prompt-btn kbd {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--gold);
+  color: #1b1e22;
+  border: 0;
+}
+.ride-prompt-btn:focus-visible {
+  outline: 3px solid var(--chalk);
+  outline-offset: 3px;
+}
+.ride-prompt.done .ride-prompt-btn {
+  border-color: var(--night-ok);
+  animation: none;
+}
+.ride-prompt.done kbd {
+  background: var(--night-ok);
+}
+.ride-prompt.miss .ride-prompt-btn {
+  border-color: var(--chalk-2);
+  color: var(--chalk-2);
+  animation: none;
+}
+.ride-prompt-time {
+  display: block;
+  inline-size: 180px;
+  block-size: 4px;
+  border-radius: 2px;
+  background: rgba(233, 238, 242, 0.18);
+  overflow: hidden;
+}
+.ride-prompt-time i {
+  display: block;
+  block-size: 100%;
+  background: var(--gold);
+  animation: ride-timer 2.2s linear forwards;
+}
+.ride-prompt.done .ride-prompt-time,
+.ride-prompt.miss .ride-prompt-time {
+  visibility: hidden;
+}
+@keyframes ride-call {
+  to {
+    box-shadow: 0 0 0 14px rgba(217, 162, 27, 0);
+  }
+}
+@keyframes ride-timer {
+  from {
+    inline-size: 100%;
+  }
+  to {
+    inline-size: 0;
+  }
+}
+
+/* ---------- Abort ---------- */
+.ride-abort {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 40%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-inline-size: 220px;
+  padding: 18px 28px;
+  border-radius: 14px;
+  border: 3px solid #fff;
+  background: #c4241b;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  z-index: 5;
+  box-shadow: 0 0 0 0 rgba(255, 75, 62, 0.7), 0 10px 40px rgba(0, 0, 0, 0.6);
+  animation: ride-abort 0.8s ease-out infinite;
+}
+[dir='rtl'] .ride-abort {
+  transform: translate(50%, -50%);
+}
+.ride-abort b {
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 900;
+  font-stretch: 75%;
+  line-height: 1;
+}
+.ride-abort kbd {
+  background: #fff;
+  color: #c4241b;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-weight: 800;
+}
+.ride-abort small {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.ride-abort.none {
+  background: #5a2320;
+}
+.ride-abort.dead {
+  animation: none;
+  background: #2b2f34;
+  border-color: #6b737b;
+}
+.ride-abort:focus-visible {
+  outline: 4px solid var(--gold);
+  outline-offset: 4px;
+}
+@keyframes ride-abort {
+  to {
+    box-shadow: 0 0 0 22px rgba(255, 75, 62, 0), 0 10px 40px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* ---------- Burn meter ---------- */
+.ride-dv {
+  position: absolute;
+  inset-inline-end: 20px;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 2px;
+  padding: 12px 16px;
+  border-radius: var(--radius-m);
+  background: rgba(10, 16, 23, 0.72);
+  border: 1px solid rgba(233, 238, 242, 0.16);
+  min-inline-size: 170px;
+  z-index: 2;
+  direction: ltr;
+}
+.ride-dv-k {
+  font-size: 0.75rem;
+  color: var(--chalk-2);
+}
+.ride-dv b {
+  font-size: var(--step-4);
+  font-weight: 850;
+  font-stretch: 75%;
+  line-height: 1;
+}
+.ride-dv-u {
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ride-dv-bar {
+  position: relative;
+  display: block;
+  block-size: 6px;
+  border-radius: 3px;
+  background: rgba(233, 238, 242, 0.15);
+  margin-block-start: 6px;
+}
+.ride-dv-bar i {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background: var(--night-ok);
+  border-radius: 3px;
+}
+.ride-dv-bar s {
+  position: absolute;
+  inset-block: -4px;
+  inset-inline-start: calc(388 / 420 * 100%);
+  border-inline-start: 2px solid var(--gold);
+}
+.ride-dv.stopped b {
+  color: var(--gold);
+}
+
+/* ---------- Photo targets ---------- */
+.ride-reticles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.ride-reticle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  transition: opacity 0.3s ease;
+}
+.ride-reticle i {
+  display: block;
+  inline-size: 74px;
+  block-size: 74px;
+  border: 2px solid var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  animation: ride-ret 1.6s linear forwards;
+}
+.ride-reticle span {
+  font-size: var(--step--1);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(10, 16, 23, 0.75);
+  white-space: nowrap;
+}
+.ride-reticle.hit i {
+  border-color: var(--night-ok);
+  border-width: 4px;
+  animation: none;
+}
+.ride-reticle.gone {
+  opacity: 0;
+}
+@keyframes ride-ret {
+  from {
+    transform: scale(1.5);
+    opacity: 0.4;
+  }
+  20% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.85);
+  }
+}
+.ride-photos {
+  position: absolute;
+  inset-inline-end: 20px;
+  inset-block-start: 84px;
+  padding: 6px 12px;
+  border-radius: var(--radius-m);
+  background: rgba(10, 16, 23, 0.72);
+  font-weight: 700;
+  z-index: 3;
+}
+
+/* ---------- Debrief card ---------- */
+.ride-card {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 9, 14, 0.55);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  z-index: 6;
+}
+.ride-card.show {
+  opacity: 1;
+}
+.ride-card-in {
+  max-inline-size: 520px;
+  padding: 22px 24px;
+  border-radius: 10px;
+  background: var(--slate);
+  border: 1px solid rgba(233, 238, 242, 0.18);
+  border-block-start: 5px solid var(--night-ok);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+.ride-card-in.close,
+.ride-card-in.aborted {
+  border-block-start-color: var(--night-warn);
+}
+.ride-card-in.lost {
+  border-block-start-color: var(--night-bad);
+}
+.ride-card-in h2 {
+  font-size: var(--step-3);
+  font-stretch: 75%;
+  font-weight: 850;
+  margin-block: 4px 8px;
+}
+.ride-card-in p {
+  color: #d4dce3;
+  line-height: 1.45;
+}
+.ride-card-in ul {
+  margin: 12px 0 18px;
+  padding-inline-start: 1.1em;
+  display: grid;
+  gap: 4px;
+  color: var(--chalk);
+}
+
+/* ---------- Progress and loading ---------- */
+.ride-progress {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: 3px;
+  background: rgba(233, 238, 242, 0.1);
+  z-index: 2;
+}
+.ride-progress i {
+  display: block;
+  block-size: 100%;
+  inline-size: 0;
+  background: var(--gold);
+}
+.ride-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--chalk-2);
+  font-size: var(--step-1);
+}
+
+/* ---------- Phones ---------- */
+@media (max-width: 640px) {
+  .ride-head {
+    grid-template-columns: 1fr auto;
+    padding: 10px 12px 0;
+  }
+  .ride-met {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: var(--step-2);
+  }
+  .ride-title h1 {
+    font-size: var(--step-1);
+  }
+  .ride-gauges {
+    inset-block-start: 150px;
+    transform: none;
+    inset-inline-start: 10px;
+    padding: 6px 8px;
+    gap: 8px;
+  }
+  .ride-gbar {
+    block-size: 56px;
+    inline-size: 10px;
+  }
+  .ride-gmeter b {
+    font-size: var(--step-1);
+  }
+  .ride-gmeter small {
+    display: none;
+  }
+  .ride-read {
+    gap: 4px;
+  }
+  .ride-read dd {
+    min-inline-size: 5.5em;
+  }
+  .ride-read dd {
+    font-size: 0.9rem;
+  }
+  .ride-caption {
+    inset-block-end: 14px;
+    padding: 0 12px;
+  }
+  .ride-cap p:last-child {
+    font-size: 0.86rem;
+  }
+  .ride-dv {
+    inset-inline-end: 10px;
+    inset-block-start: 30%;
+    min-inline-size: 130px;
+  }
+  .ride-prompt {
+    inset-block-start: 50%;
+  }
+  .ride-photos {
+    inset-block-start: 150px;
+    inset-inline-end: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ride.alarm .ride-tint,
+  .ride-prompt-btn,
+  .ride-abort,
+  .ride-reticle i {
+    animation: none;
+  }
+  .ride-flash.on {
+    animation: none;
+  }
+  .ride.fading::after {
+    animation-duration: 0.01s;
+  }
+}

@@ -1,0 +1,81 @@
+/* Arabic and right-to-left.
+   Screens already lay out with logical properties and flip their own arrows
+   (the [dir='rtl'] rules in each module's CSS). This file holds what is
+   Arabic-wide: the font stack, spacing that breaks joined letters, numbers
+   with Latin units, and the few places where mirroring needs a nudge. */
+
+/* ---------- Type ----------
+   Archivo has no Arabic letters. Noto Kufi Arabic is bundled (css/fonts.css,
+   Arabic unicode-range only), so Latin names and digits still fall through to
+   Archivo. Segoe UI and Tahoma cover Arabic on school PCs if the font file
+   fails to load. */
+html[lang='ar'] {
+  --font: 'Noto Kufi Arabic', 'Archivo', 'Segoe UI', 'Tahoma', 'Arial', system-ui, sans-serif;
+}
+
+html[lang='ar'] body {
+  /* Kufi has tall marks above and below the line: give running text room. */
+  line-height: 1.6;
+}
+
+/* Arabic letters join: any tracking pulls them apart. Display type in the
+   game is tracked tight or wide in many places, and SVG patch text carries a
+   letter-spacing attribute; CSS outranks the attribute. */
+html[lang='ar'] body *,
+html[lang='ar'] svg text,
+html[lang='ar'] svg textPath {
+  letter-spacing: normal !important;
+}
+
+/* Arabic has no italics: a slanted Kufi is a fake oblique and hard to read. */
+html[lang='ar'] :is(em, i, cite, var, dfn, address) {
+  font-style: normal;
+}
+
+/* Condensed widths and the heaviest weights are Archivo features; Kufi stops
+   at 800, so very heavy headings would be faux-bolded. */
+html[lang='ar'] :is(h1, h2, h3, h4, .display) {
+  font-synthesis: none;
+}
+
+/* SVG text (patches, the legacy seal) names Archivo and Arial Narrow as
+   attributes. In Arabic, use the full stack so names and ranks render in Kufi. */
+html[lang='ar'] svg text {
+  font-family: var(--font);
+}
+
+/* Form controls do not inherit the font everywhere. */
+html[lang='ar'] :is(input, textarea, select, button) {
+  font-family: var(--font);
+}
+
+/* ---------- Numbers with Latin units ----------
+   "164 kg", "907 W", "150 Mbps" sit inside right-to-left text. Without an
+   isolate they flip to "kg 164". plaintext takes the direction from the first
+   strong letter: Latin units read left to right, Arabic labels stay right to
+   left, and bare numbers are unaffected. Only phrase-level elements: on table
+   cells and paragraphs plaintext would also flip text-align to the left. */
+html[dir='rtl'] :is(b, span, small, strong, em, i, output).num,
+html[dir='rtl'] .num > :is(b, span, small, strong, em, i),
+html[dir='rtl'] :is(kbd, code) {
+  unicode-bidi: plaintext;
+}
+
+/* film.css gives these blocks unicode-bidi: plaintext for the same reason.
+   On a block that also turns text-align: start into "left" whenever the value
+   starts with a Latin letter or "$" ($250M), so one column mixes left and
+   right. Pin them to the right, which is where start is in Arabic. (Chrome
+   computes text-align: match-parent to plain "start", so it does not help.) */
+html[dir='rtl'] :is(.results-cmp tbody td, .results-stat dd, .results-goal-v, .results-big, .film-hud-row dd, .film-delay-v, .film-delay-c) {
+  text-align: right;
+}
+
+/* Inputs where people type names: follow what they type. */
+html[dir='rtl'] :is(input[type='text'], input:not([type]), textarea) {
+  unicode-bidi: plaintext;
+}
+
+/* Long English source names and URLs inside Arabic captions. */
+html[dir='rtl'] a[href^='http'] {
+  unicode-bidi: isolate;
+}

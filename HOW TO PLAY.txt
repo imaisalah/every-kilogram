@@ -1,0 +1,35 @@
+EVERY KILOGRAM - how to play
+============================
+
+Windows (nothing to install):
+  1. Unzip this folder first (right-click the zip > Extract All).
+     Do not run it from inside the zip.
+  2. Double-click play.bat.
+     If Windows says "Windows protected your PC", click "More info" then "Run anyway".
+  3. The game opens in your browser (Chrome or Edge recommended).
+     Keep the black window open while you play; close it to stop the game.
+
+Mac, Linux, phones and tablets:
+  Use the online link if you were given one; this folder needs a small local
+  web server there (for example: python3 -m http.server 8765 in this folder,
+  then open http://localhost:8765/).
+
+Slow laptop? Open Menu > Settings and choose Low graphics.
+
+----------------------------------------------------------------------
+
+طريقة التشغيل
+=============
+
+على ويندوز (من غير ما تسطّب أي حاجة):
+  1. فك ضغط الفولدر الأول (كليك يمين على الملف المضغوط ثم Extract All).
+     ما تشغّلش اللعبة وهي جوه الملف المضغوط.
+  2. دوس دبل كليك على play.bat
+     لو ويندوز طلّع رسالة "Windows protected your PC" دوس "More info" وبعدين "Run anyway".
+  3. اللعبة هتفتح في المتصفح (يفضّل Chrome أو Edge).
+     سيب الشباك الأسود مفتوح وإنت بتلعب، واقفله لما تخلّص.
+
+ماك ولينكس والموبايل والتابلت:
+  استخدم لينك اللعبة على النت لو معاك.
+
+اللابتوب بطيء؟ افتح Menu ثم Settings واختار Low.

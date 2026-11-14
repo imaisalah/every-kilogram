@@ -1,0 +1,686 @@
+/* Launch day: the walkdown at the pad, the Go/No-Go poll, the final count. */
+.ld {
+  position: relative;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  background: #070c14;
+}
+.ld-stage {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: pointer;
+}
+.ld-stage.ek-no3d,
+.ld.ld-flat .ld-stage {
+  background: radial-gradient(ellipse at 50% 80%, #24324e 0%, #0b1424 60%, #05080d 100%);
+}
+
+/* Panels over the 3D view: slate glass. */
+.ld-side,
+.ld-card,
+.ld-count {
+  background: rgba(13, 21, 30, 0.88);
+  border: 1px solid rgba(233, 238, 242, 0.14);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  color: var(--chalk);
+}
+
+/* ---------- Header ---------- */
+.ld-top {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px 28px;
+  background: linear-gradient(rgba(5, 9, 15, 0.82), rgba(5, 9, 15, 0));
+  pointer-events: none;
+}
+.ld-top > * {
+  pointer-events: auto;
+}
+.ld-kicker {
+  margin: 0;
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--night-warn);
+}
+.ld-rehearsal {
+  color: var(--chalk-2);
+}
+.ld-title h1 {
+  font-size: var(--step-3);
+  margin: 2px 0 2px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.ld-sub {
+  margin: 0;
+  color: var(--chalk-2);
+  font-size: var(--step--1);
+}
+.ld-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.ld-clock {
+  font-weight: 800;
+  font-stretch: 80%;
+  font-size: var(--step-1);
+  color: var(--night-warn);
+  background: rgba(5, 8, 12, 0.75);
+  border-radius: 6px;
+  padding: 4px 10px;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+.ld[data-phase='count'] .ld-clock {
+  color: var(--night-ok);
+}
+
+/* The header's quick path is for the walkdown and the poll only. */
+.ld[data-phase='report'] [data-act='auto'],
+.ld[data-phase='count'] [data-act='auto'] {
+  display: none;
+}
+
+/* ---------- Walkdown checklist ---------- */
+.ld-side {
+  position: absolute;
+  inset-inline-start: 20px;
+  inset-block-start: 128px;
+  width: 300px;
+  padding: 16px;
+}
+.ld-side h2 {
+  font-size: var(--step-1);
+}
+.ld-side-lede {
+  margin: 6px 0 12px;
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ld-spots {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ld-spot {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  text-align: start;
+  background: rgba(233, 238, 242, 0.06);
+  border: 1px solid rgba(233, 238, 242, 0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--chalk);
+  cursor: pointer;
+  font-size: var(--step--1);
+  font-weight: 700;
+}
+.ld-spot:hover {
+  background: rgba(63, 193, 180, 0.14);
+}
+.ld-spot-n {
+  inline-size: 24px;
+  block-size: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #3fc1b4;
+  color: var(--slate);
+  font-weight: 900;
+}
+.ld-spot-s {
+  color: var(--chalk-3);
+  font-weight: 600;
+}
+.ld-spot.done {
+  cursor: default;
+  opacity: 0.75;
+}
+.ld-spot.done .ld-spot-n {
+  background: var(--night-ok);
+}
+.ld-spot.done .ld-spot-s {
+  color: var(--night-ok);
+}
+.ld-clear {
+  width: 100%;
+}
+
+/* ---------- Hot-spot pins ---------- */
+.ld-pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ld-pin {
+  position: absolute;
+  inset-block-start: 0;
+  left: 0;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: -16px 0 0 -14px;
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(63, 193, 180, 0.7);
+  background: rgba(8, 18, 24, 0.82);
+  color: var(--chalk);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  will-change: transform;
+}
+.ld-pin-dot {
+  inline-size: 12px;
+  block-size: 12px;
+  border-radius: 50%;
+  background: #3fc1b4;
+  box-shadow: 0 0 0 4px rgba(63, 193, 180, 0.25);
+}
+.ld-pin.near {
+  background: #3fc1b4;
+  color: var(--slate);
+}
+.ld-pin.near .ld-pin-dot {
+  background: var(--slate);
+}
+
+.ld-hint {
+  position: absolute;
+  inset-block-end: 18px;
+  inset-inline: 0;
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(5, 9, 15, 0.72);
+  color: var(--chalk-2);
+  font-size: var(--step--1);
+  text-align: center;
+  pointer-events: none;
+}
+.ld-hint kbd,
+.ld-count kbd {
+  font: inherit;
+  font-weight: 800;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--chalk);
+  color: var(--slate);
+}
+
+/* ---------- Cards: inspections, the poll, the report ---------- */
+.ld-card {
+  position: absolute;
+  inset-inline-end: 20px;
+  inset-block-start: 112px;
+  width: 440px;
+  max-height: calc(100% - 136px);
+  overflow: auto;
+  padding: 18px 20px 20px;
+}
+.ld-card h2 {
+  font-size: var(--step-2);
+  margin-bottom: 8px;
+}
+.ld-card p {
+  margin: 0 0 10px;
+}
+.ld-card-k {
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--night-warn);
+  margin: 0 0 2px !important;
+}
+.ld-q {
+  font-weight: 700;
+}
+.ld-fact {
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+  border-inline-start: 3px solid var(--gold);
+  padding-inline-start: 10px;
+}
+.ld-fact span {
+  font-weight: 800;
+  color: var(--gold);
+}
+.ld-note {
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ld-choices {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ld-choices.row {
+  display: flex;
+  flex-wrap: wrap;
+}
+.ld-choice {
+  display: grid;
+  gap: 2px;
+  text-align: start;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(233, 238, 242, 0.25);
+  background: rgba(233, 238, 242, 0.06);
+  color: var(--chalk);
+  cursor: pointer;
+}
+.ld-choice:hover {
+  border-color: var(--gold);
+  background: rgba(217, 162, 27, 0.12);
+}
+.ld-choice small {
+  color: var(--chalk-2);
+  font-weight: 500;
+}
+.ld-outcome {
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: rgba(63, 193, 180, 0.1);
+}
+.ld-outcome.warn {
+  background: rgba(240, 180, 41, 0.1);
+}
+.ld-outcome p {
+  margin: 6px 0 0;
+}
+.ld-read {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(5, 8, 12, 0.6);
+}
+.ld-read dt {
+  color: var(--chalk-2);
+  font-size: var(--step--1);
+}
+.ld-read dd {
+  margin: 0;
+  font-weight: 800;
+}
+
+.ld-tm {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+  margin: 0 0 10px;
+}
+.ld-tm th {
+  text-align: start;
+  color: var(--chalk-3);
+  font-weight: 700;
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(233, 238, 242, 0.15);
+}
+.ld-tm td {
+  padding: 6px;
+  border-bottom: 1px solid rgba(233, 238, 242, 0.08);
+  vertical-align: middle;
+}
+.ld-tm td.num {
+  white-space: nowrap;
+  font-weight: 700;
+}
+.ld-tm .btn {
+  padding: 4px 10px;
+}
+.ld-wx {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.ld-wx li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 10px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(5, 8, 12, 0.45);
+}
+.ld-wx li.bad {
+  background: rgba(240, 106, 95, 0.12);
+}
+.ld-wx b {
+  color: var(--chalk);
+  white-space: nowrap;
+}
+.ld-wx small {
+  grid-column: 1 / -1;
+  color: var(--chalk-3);
+  padding-inline-start: 21px;
+}
+
+/* The poll */
+.ld-window {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+  margin-bottom: 10px;
+}
+.ld-window-bar {
+  flex-basis: 100%;
+  block-size: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--night-ok) calc(var(--k) * 100%), rgba(233, 238, 242, 0.12) 0);
+}
+[dir='rtl'] .ld-window-bar {
+  background: linear-gradient(270deg, var(--night-ok) calc(var(--k) * 100%), rgba(233, 238, 242, 0.12) 0);
+}
+.ld-stations {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 6px;
+}
+.ld-st {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(233, 238, 242, 0.05);
+  border-inline-start: 4px solid rgba(233, 238, 242, 0.15);
+  animation: ld-in 0.25s ease-out;
+}
+.ld-st.go {
+  border-inline-start-color: var(--night-ok);
+}
+.ld-st.hold {
+  border-inline-start-color: var(--night-warn);
+}
+.ld-st.nogo {
+  border-inline-start-color: var(--night-bad);
+}
+.ld-st-n {
+  font-weight: 800;
+}
+.ld-st-wait {
+  color: var(--chalk-3);
+  font-size: var(--step--1);
+}
+.ld-st p,
+.ld-st .ld-wx {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ld-st .ld-wx {
+  margin-top: 6px;
+}
+.ld-actions {
+  position: sticky;
+  inset-block-end: -20px;
+  margin: 0 -20px -20px;
+  padding: 12px 20px 20px;
+  background: rgb(14, 22, 31);
+  box-shadow: 0 -12px 16px rgba(14, 22, 31, 0.92);
+}
+.ld-actions .btn {
+  min-height: 44px;
+}
+.ld-gobtn {
+  width: 100%;
+  font-size: var(--step-1);
+}
+.ld-danger,
+.night .btn.ld-danger:not(.primary):not(.ghost) {
+  background: var(--night-bad);
+  color: #1d0605;
+}
+.ld-danger-ghost {
+  color: var(--night-bad);
+}
+.ld-warnbox {
+  border: 1.5px solid var(--night-bad);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(240, 106, 95, 0.08);
+}
+.ld-warnbox ul {
+  margin: 0 0 8px;
+  padding-inline-start: 18px;
+  font-size: var(--step--1);
+}
+.ld-log {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(5, 8, 12, 0.55);
+  font-size: var(--step--1);
+  color: var(--chalk-2);
+}
+.ld-log li + li {
+  opacity: 0.65;
+  margin-top: 4px;
+}
+.ld-rep {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 8px;
+}
+.ld-rep li {
+  font-size: var(--step--1);
+  line-height: 1.4;
+}
+.ld-rep .tone {
+  margin-inline-end: 4px;
+}
+
+/* ---------- The final count ---------- */
+.ld-count {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 40px;
+  margin: 0 auto;
+  width: min(560px, calc(100% - 32px));
+  padding: 16px 20px;
+  text-align: center;
+}
+.ld-count-t {
+  margin: 0;
+  font-size: var(--step-6);
+  font-weight: 850;
+  font-stretch: 70%;
+  line-height: 1;
+  color: var(--night-ok);
+  direction: ltr;
+}
+.ld-count-c {
+  margin: 8px 0 12px;
+  min-height: 1.45em;
+  font-size: var(--step-1);
+  font-weight: 700;
+}
+.ld-fade {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s ease-in;
+}
+.ld-fade.on {
+  opacity: 1;
+}
+.ld-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.ld-tm th .ld-sr {
+  position: absolute;
+}
+
+@keyframes ld-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* The firing room is framed with the astronaut on the left and the pad in the
+   middle, in both languages: the poll and the report stay on the right. */
+@media (min-width: 761px) {
+  [dir='rtl'] .ld[data-phase='poll'] .ld-card,
+  [dir='rtl'] .ld[data-phase='report'] .ld-card {
+    inset-inline-start: 20px;
+    inset-inline-end: auto;
+  }
+}
+
+/* ---------- Phones ---------- */
+@media (max-width: 760px) {
+  .ld-top {
+    padding: 10px 12px 20px;
+  }
+  .ld-title h1 {
+    font-size: var(--step-2);
+  }
+  .ld-sub {
+    display: none;
+  }
+  .ld-top-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .ld-clock {
+    font-size: var(--step-0);
+  }
+  /* The checklist becomes a compact strip at the bottom. */
+  .ld-side {
+    inset-inline: 10px;
+    inset-block-start: auto;
+    inset-block-end: 10px;
+    width: auto;
+    padding: 10px;
+  }
+  .ld-side h2,
+  .ld-side-lede {
+    display: none;
+  }
+  .ld-spots {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .ld-spot {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+    gap: 2px;
+    padding: 6px 4px;
+    font-size: 0.72rem;
+    line-height: 1.15;
+  }
+  .ld-spot-s {
+    display: none;
+  }
+  .ld-clear {
+    padding: 10px;
+  }
+  .ld-hint {
+    inset-block-end: auto;
+    inset-block-start: 92px;
+    font-size: 0.75rem;
+  }
+  .ld-pin-l {
+    display: none;
+  }
+  .ld-pin {
+    padding: 6px;
+  }
+  .ld-pin.near .ld-pin-l {
+    display: inline;
+  }
+  .ld-card {
+    inset-inline: 8px;
+    inset-block-start: auto;
+    inset-block-end: 8px;
+    width: auto;
+    max-height: 64%;
+    padding: 14px 14px 16px;
+  }
+  .ld[data-phase='poll'] .ld-card,
+  .ld[data-phase='report'] .ld-card {
+    max-height: 70%;
+  }
+  .ld.has-card .ld-side {
+    display: none;
+  }
+  .ld-card h2 {
+    font-size: var(--step-1);
+  }
+  .ld-actions {
+    inset-block-end: -16px;
+    margin: 0 -14px -16px;
+    padding: 10px 14px 16px;
+  }
+  .ld-tm td:first-child {
+    min-width: 110px;
+  }
+  .ld-count-t {
+    font-size: var(--step-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-st {
+    animation: none;
+  }
+  .ld-fade {
+    transition: none;
+  }
+}
+
+/* The character controller's hint and thumb joystick sit above the hint line. */
+.ld-stage {
+  --ctl-safe-bottom: 70px;
+}
+@media (max-width: 760px) {
+  .ld-stage {
+    --ctl-safe-bottom: 186px;
+  }
+}

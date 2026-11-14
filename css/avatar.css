@@ -1,0 +1,417 @@
+/* The astronaut creator (js/screen-avatar.js). Day screen: vellum, graphite ink. */
+
+.av-wrap {
+  position: relative;
+  width: min(1240px, 100%);
+  margin: 0 auto;
+  padding: clamp(18px, 3vw, 40px) clamp(16px, 3.5vw, 44px) 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-areas:
+    'stage head'
+    'stage controls'
+    'stage actions'
+    'stage career';
+  grid-template-rows: auto auto auto 1fr;
+  column-gap: clamp(20px, 3.5vw, 48px);
+  row-gap: 22px;
+  align-items: start;
+}
+
+.av-head {
+  grid-area: head;
+  display: grid;
+  gap: 6px;
+}
+
+.av-kicker {
+  font-size: var(--step--1);
+  font-weight: 700;
+  color: var(--gold-ink);
+}
+
+.av-title {
+  font-size: clamp(2.6rem, 4.6vw, 3.8rem);
+}
+
+.av-lede {
+  color: var(--graphite-2);
+  max-width: 62ch;
+}
+
+/* ---------- Stage ---------- */
+.av-stage-wrap {
+  grid-area: stage;
+  position: sticky;
+  top: clamp(18px, 3vw, 40px);
+  height: min(calc(100vh - 2 * clamp(18px, 3vw, 40px)), 860px);
+  min-height: 460px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #f3f6f3, var(--vellum) 60%, var(--vellum-2));
+  box-shadow:
+    0 0 0 1.5px var(--graphite),
+    0 22px 48px -30px rgba(35, 40, 46, 0.55);
+}
+
+.av-stage {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.av-stage:active {
+  cursor: grabbing;
+}
+
+.av-stage:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: -3px;
+}
+
+.av-fallback {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: min(80%, 420px);
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.av-plate {
+  position: absolute;
+  inset-inline-start: 14px;
+  top: 14px;
+  display: grid;
+  gap: 1px;
+  padding: 8px 12px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 0 0 1px rgba(35, 40, 46, 0.18);
+  pointer-events: none;
+  max-width: calc(100% - 28px);
+}
+
+.av-plate b {
+  font-stretch: 78%;
+  font-weight: 850;
+  font-size: var(--step-1);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.av-plate span {
+  font-size: var(--step--1);
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+.av-poses {
+  position: absolute;
+  inset-inline: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.av-poses .btn {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--graphite);
+  min-height: 36px;
+}
+
+.av-poses .btn:hover {
+  background: #fff;
+}
+
+.av-poses .btn[aria-pressed='true'] {
+  background: var(--graphite);
+  color: var(--vellum);
+}
+
+/* ---------- Controls ---------- */
+.av-controls {
+  grid-area: controls;
+  display: grid;
+  gap: 18px;
+}
+
+.av-field {
+  display: grid;
+  gap: 8px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.av-field > label,
+.av-field > legend {
+  font-weight: 750;
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.av-field .hint {
+  font-size: var(--step--1);
+  color: var(--graphite-2);
+}
+
+.av-input {
+  width: 100%;
+  font-size: var(--step-1);
+  font-stretch: 80%;
+  font-weight: 800;
+  padding: 9px 14px;
+  border: 2px solid var(--graphite);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.av-input:focus {
+  outline: 3px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.av-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.av-swatch {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 0 0 1.5px rgba(35, 40, 46, 0.3);
+  cursor: pointer;
+  background: var(--c);
+  transition: transform 0.12s ease;
+}
+
+.av-swatch.is-two {
+  background: linear-gradient(135deg, var(--c) 0 58%, var(--c2) 58% 100%);
+}
+
+.av-swatch:hover {
+  transform: scale(1.06);
+}
+
+.av-swatch[aria-pressed='true'] {
+  box-shadow: 0 0 0 3px var(--graphite);
+}
+
+.av-seg {
+  gap: 6px;
+}
+
+.av-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: var(--step--1);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.av-seg svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.av-seg button[aria-pressed='true'] svg {
+  --skin: #e6d2bf;
+}
+
+/* ---------- Rank and badges ---------- */
+.av-career {
+  grid-area: career;
+  display: grid;
+  gap: 10px;
+  padding: 18px 18px 20px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1.5px var(--vellum-line);
+}
+
+.av-rank {
+  font-size: var(--step-3);
+}
+
+.av-ranks {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 4px;
+  font-size: var(--step--1);
+  color: var(--graphite-2);
+}
+
+.av-ranks li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 6px;
+  border-radius: 999px;
+  background: rgba(35, 40, 46, 0.05);
+}
+
+.av-ranks li.is-done {
+  color: var(--graphite);
+}
+
+.av-ranks li.is-now {
+  background: var(--graphite);
+  color: var(--vellum);
+  font-weight: 700;
+}
+
+.av-rank-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+
+.av-ranks li.is-done .av-rank-dot,
+.av-ranks li.is-now .av-rank-dot {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.av-next {
+  font-size: var(--step--1);
+  color: var(--graphite-2);
+}
+
+.av-badges-h {
+  margin-top: 8px;
+  font-size: var(--step-1);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.av-badges-h .num {
+  font-size: var(--step--1);
+  color: var(--graphite-2);
+  font-weight: 700;
+}
+
+.av-badges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.av-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: var(--graphite-2);
+}
+
+.av-badge.is-earned {
+  color: var(--graphite);
+  background: rgba(217, 162, 27, 0.12);
+}
+
+.av-badge-art {
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+
+.av-badge span {
+  display: grid;
+  min-width: 0;
+}
+
+.av-badge b {
+  font-size: var(--step--1);
+  line-height: 1.2;
+}
+
+.av-badge small {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--graphite-2);
+}
+
+/* ---------- Actions ---------- */
+.av-actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.av-actions-gap {
+  flex: 1;
+}
+
+/* ---------- Phone and narrow windows ---------- */
+@media (max-width: 860px) {
+  .av-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'head'
+      'stage'
+      'controls'
+      'career';
+    grid-template-rows: none;
+    padding-bottom: 96px;
+    row-gap: 18px;
+  }
+
+  .av-stage-wrap {
+    position: relative;
+    top: 0;
+    height: min(58vh, 480px);
+    min-height: 340px;
+  }
+
+  .av-actions {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 5;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(230, 236, 232, 0.94);
+    box-shadow: 0 -1px 0 var(--vellum-line), 0 -10px 24px -18px rgba(35, 40, 46, 0.5);
+    backdrop-filter: blur(6px);
+  }
+
+  .av-actions .btn.primary {
+    flex: 1 1 auto;
+  }
+
+  .av-actions-gap {
+    display: none;
+  }
+
+  .av-lede {
+    font-size: var(--step--1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .av-swatch {
+    transition: none;
+  }
+}
