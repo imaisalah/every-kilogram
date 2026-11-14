@@ -229,8 +229,21 @@
             { value: 'off', label: t('settings.off', 'Off') },
             { value: 'on', label: t('settings.on', 'On') },
           ], S.invertY ? 'on' : 'off')}
+          ${'lookSmooth' in S ? `<p class="ek-set-label">${esc(t('settings.camera.smooth', 'Smooth mouse'))}</p>
+          ${seg('smooth', [
+            { value: 'off', label: t('settings.off', 'Off') },
+            { value: 'on', label: t('settings.on', 'On') },
+          ], S.lookSmooth ? 'on' : 'off')}` : ''}
           <p class="ek-set-note">${esc(t('settings.camera.note', 'While you walk, the camera swings round behind you. Turn it yourself with the mouse or the right stick at any time.'))}</p>
         </section>
+        ${'realGravity' in S ? `<section class="ek-set-row">
+          <h3>${esc(t('settings.gravity', 'Realistic gravity'))}</h3>
+          ${seg('gravity', [
+            { value: 'on', label: t('settings.on', 'On') },
+            { value: 'off', label: t('settings.off', 'Off') },
+          ], S.realGravity === false ? 'off' : 'on')}
+          <p class="ek-set-note">${esc(t('settings.gravity.note', 'On: you move with each world’s real gravity: long, floating strides and long stops on the Moon and Europa, a little less on Mars. Off: you move as on Earth everywhere.'))}</p>
+        </section>` : ''}
         <section class="ek-set-row">
           <h3>${esc(t('settings.saves', 'Saved game'))}</h3>
           <p class="ek-set-note"><span class="tone ${note.k}">${esc(note.text)}</span></p>
@@ -252,6 +265,8 @@
           if (which === 'autocam') S.autoCamera = v === 'on';
           if (which === 'look') S.lookSpeed = Number(v);
           if (which === 'invert') S.invertY = v === 'on';
+          if (which === 'smooth') S.lookSmooth = v === 'on';
+          if (which === 'gravity') S.realGravity = v === 'on';
           if (which === 'music') S.music = v === 'on';
           render();
           const again = dlg.querySelector(`[data-seg="${which}"] [data-value="${v}"]`);

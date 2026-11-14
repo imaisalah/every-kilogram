@@ -263,6 +263,8 @@
     'team.pause.btn': 'إيقاف مؤقت',
     'team.pause.title': 'متوقفة مؤقتًا',
     'team.pause.resume': 'متابعة',
+    'team.pause.gravity.on': 'جاذبية واقعية: تعمل',
+    'team.pause.gravity.off': 'جاذبية واقعية: متوقفة',
     'team.pause.back': 'رجوع خطوة',
     'team.pause.restart': 'إعادة المهمة',
     'team.pause.quit': 'الخروج إلى الشاشة الرئيسية',

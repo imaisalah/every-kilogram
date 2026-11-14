@@ -814,6 +814,9 @@ function createProcedural(appearance, opts = {}) {
   let carry = null; // { spread, w, want }
   let phase = 0;
   let stepIdx = 0;
+  let gravity = null;
+  let gaitNow = null;
+  let reverse = false;
   let onStep = opts.onStep || null;
   let time = Math.random() * 10;
   let blinkIn = 1.5 + Math.random() * 3;
@@ -980,8 +983,13 @@ function createProcedural(appearance, opts = {}) {
     // takes long bounding strides at about 2.9 steps a second.
     const walkCad = speed > 0 ? speed / (1.0 + 0.27 * speed) : 0;
     const runCad = speed / (1.25 + 0.45 * speed);
-    const cad = lerp(walkCad, runCad, runK);
-    if (speed > 0) phase += dt * cad;
+    let cad = lerp(walkCad, runCad, runK);
+    // Gravity (setGravity): the lope's slower cadence, from SMD.team.surface.gait.
+    const gNow = typeof gravity === 'function' ? Number(gravity()) || 0 : gravity;
+    const gf = gNow && SMD.team && SMD.team.surface && SMD.team.surface.gait;
+    gaitNow = gf ? gf(speed, gNow, 0.9) : null;
+    if (gaitNow && (gaitNow.gait === 'lope' || gaitNow.gait === 'run') && runK > 0.5) cad = gaitNow.cadence / 2;
+    if (speed > 0) phase += dt * cad * (reverse ? -1 : 1);
     // A foot lands twice a cycle: tell whoever listens (footsteps).
     const si = Math.floor(phase * 2 + 0.25);
     if (si !== stepIdx) {
@@ -1200,7 +1208,23 @@ function createProcedural(appearance, opts = {}) {
       swim = clamp(Number(k) || 0, 0, 1);
     },
     hop(o) {
-      play('hop', o);
+      play('hop', o && o.airS > 0 ? Object.assign({}, o, { duration: 0.3 + o.airS }) : o);
+    },
+    setGravity(g) {
+      gravity = typeof g === 'function' ? g : Number(g) > 0 ? Number(g) : null;
+    },
+    setReverse(on) {
+      reverse = !!on;
+    },
+    setBreath() {},
+    get gait() {
+      return gaitNow;
+    },
+    get lift() {
+      return 0;
+    },
+    get inFlight() {
+      return false;
     },
     // Hold a part in both arms (spread 0..1 by its width); false lets go.
     carry(o) {
@@ -1298,7 +1322,7 @@ function swappable(first, appearance, opts) {
   outer.name = 'astronaut';
   outer.add(impl.group);
   // What the caller asked for, replayed onto the rigged figure.
-  const st = { speed: null, move: null, lean: 0, float: false, swim: 0, helmet: undefined, expr: null, look: null, carry: null, hold: null, reach: 0, outfit: null };
+  const st = { speed: null, move: null, lean: 0, float: false, swim: 0, helmet: undefined, expr: null, look: null, carry: null, hold: null, reach: 0, outfit: null, gravity: null, reverse: false, breath: false };
   let onStep = opts.onStep || null;
   const own = {};
   for (const k in impl.joints) {
@@ -1335,6 +1359,9 @@ function swappable(first, appearance, opts) {
       if (st.carry) next.carry(st.carry);
       if (st.hold) next.play(st.hold.name, st.hold.o);
       if (st.reach) next.setReach(st.reach);
+      if (st.gravity !== null && next.setGravity) next.setGravity(st.gravity);
+      if (st.reverse && next.setReverse) next.setReverse(true);
+      if (st.breath && next.setBreath) next.setBreath(true);
       next.onStep = onStep;
       next.group.position.copy(impl.group.position);
       outer.remove(impl.group);
@@ -1440,6 +1467,30 @@ function swappable(first, appearance, opts) {
     },
     hop(o) {
       impl.hop(o);
+    },
+    setGravity(g) {
+      st.gravity = g == null ? null : g;
+      if (impl.setGravity) impl.setGravity(g);
+    },
+    setReverse(on) {
+      st.reverse = !!on;
+      if (impl.setReverse) impl.setReverse(on);
+    },
+    setBreath(on) {
+      st.breath = !!on;
+      if (impl.setBreath) impl.setBreath(on);
+    },
+    get gait() {
+      return impl.gait || null;
+    },
+    get loco() {
+      return impl.loco || null;
+    },
+    get lift() {
+      return impl.lift || 0;
+    },
+    get inFlight() {
+      return !!impl.inFlight;
     },
     carry(o) {
       st.carry = o === false || o === null ? null : o || {};

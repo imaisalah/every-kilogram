@@ -17,7 +17,7 @@ import { createAstronaut } from '../3d/astronaut.js';
 import { createLamps, lampify, createParticles, createDecals, beamMaterial, haloMaterial, quality, reducedMotion } from './surface3d-fx.js';
 import { buildWorld, WORLDS } from './surface3d-world.js';
 import { buildHorizon } from './surface3d-horizon.js';
-import { makeBackpack, makeHelmetBack, makeLander, makeDish, makeSite, makeSample, makePickup, makeScanner, ROLE_COLORS, SITE_COLORS } from './surface3d-actors.js';
+import { makeBackpack, makeHelmetBack, makeLander, makeDish, makeSite, makeSample, makePickup, makeScanner, crewGravity, ROLE_COLORS, SITE_COLORS } from './surface3d-actors.js';
 
 const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -140,6 +140,7 @@ export function createSurface(opts) {
       { outfit: 'launch', helmet: true, shadows: true, blob: false, colors: { top: color, bottom, accent: '#f4f6fb', trim: '#2b2f37', glove: '#e5e8ee', shoe: '#1b1d22' } }
     );
     const g = astro.group;
+    if (astro.setGravity) astro.setGravity(crewGravity(worldId)); // the world's real gait (docs/GRAVITY.md)
     g.scale.setScalar(CREW_SCALE);
     scene.add(g);
     // Role ring on the ground: the single most readable thing from across a room.
@@ -789,14 +790,17 @@ export function createSurface(opts) {
       landerObj.group.position.set(L.x + dx, y, L.z + dz);
       const thrust = 0.75 + 0.08 * Math.sin(t * 9) + smoothstep(0.5, 0.95, k) * 0.3;
       const done = k >= 1;
-      flameD.uniforms.uOpacity.value = done ? 0 : 0.85 * thrust;
+      // Venus: the crew module is lowered onto the floating platform under its balloon,
+      // so no rocket and no dust (docs/TEAM-V3.md "Separation and descent").
+      const floating = !!cfg.platform;
+      flameD.uniforms.uOpacity.value = done || floating ? 0 : 0.85 * thrust;
       descentFlame.scale.set(1, 0.6 + smoothstep(0.4, 1, k) * 0.7, 1);
-      if (!done) lamps.add(L.x + dx, y + 0.5, L.z + dz, 34, 3.2 * thrust, 2.0 * thrust, 0.8 * thrust);
+      if (!done && !floating) lamps.add(L.x + dx, y + 0.5, L.z + dz, 34, 3.2 * thrust, 2.0 * thrust, 0.8 * thrust);
       landingRing.visible = !done;
       landingRing.position.set(L.x, world.height(L.x, L.z) + 0.12, L.z);
       landingRing.scale.setScalar(info.radius || 12);
       landingRing.material.opacity = 0.7 * (1 - smoothstep(0.8, 1, k));
-      if (alt < 34 && !done && Math.random() < dt * 140 * (1 - alt / 40) * (q.particles || 1)) {
+      if (!floating && alt < 34 && !done && Math.random() < dt * 140 * (1 - alt / 40) * (q.particles || 1)) {
         const a = Math.random() * 6.28;
         const s = 8 + Math.random() * 18 + (34 - alt) * 0.4;
         const gy = world.height(L.x, L.z);
@@ -804,8 +808,8 @@ export function createSurface(opts) {
       }
       if (k >= 1 && !cinema.thumped) {
         cinema.thumped = true;
-        addShake(0.5);
-        dustBurst(L.x, L.z, 50, 14, 2.5, 1.8, 2.6);
+        addShake(floating ? 0.12 : 0.5);
+        if (!floating) dustBurst(L.x, L.z, 50, 14, 2.5, 1.8, 2.6);
       }
     } else {
       flameD.uniforms.uOpacity.value = 0;

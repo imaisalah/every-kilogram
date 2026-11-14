@@ -188,7 +188,7 @@
     const reqText = req ? `${t(`scn.${id}.req.${req.id}.title`, req.title)}: ${t(`scn.${id}.req.${req.id}.text`, req.text)}` : '';
     const kind = objectiveKind ? t('team.surface.kind.' + objectiveKind, objectiveKind) : '';
     const pct = Math.round(((team.surface && team.surface.TUNE && team.surface.TUNE.winScienceFrac) || 0.25) * 100);
-    let surface = t('team.surface.why.surface', 'Down here: scan the {kind} sites, send their data home in the uplink windows, and lift off together with at least {pct}% of the science.', { kind, pct: ltr(pct) });
+    let surface = t('team.surface.why.surface', 'Down here: scan the {kind} sites, send their data home when the orbiter passes overhead, and lift off together with at least {pct}% of the science.', { kind, pct: ltr(pct) });
     // The signature missions ask something of their own (docs/TEAM-V3.md item 19).
     let world = null;
     try {
@@ -201,7 +201,7 @@
   // What each job does down here: one plain line.
   const JOB_LINE = {
     scientist: () => t('team.surface.job.scientist', 'You scan the science sites and choose which samples fly home.'),
-    comms: () => t('team.surface.job.comms', 'You plant and aim the dish and keep the data going home in each uplink window.'),
+    comms: () => t('team.surface.job.comms', 'You plant and aim the dish and send the data home each time the orbiter passes overhead.'),
     engineer: () => t('team.surface.job.engineer', 'You keep the lander running: fix its faults and patch worn suits.'),
     planner: () => t('team.surface.job.planner', 'You plan the route, watch the clock, call everyone home and plan the ascent.'),
   };
@@ -943,7 +943,7 @@
   // Room input (phone sticks) -> sim input. "Fire" from an old controller counts as Use.
   function fromRoomInput(i) {
     const b = i.buttons | 0;
-    return { moveX: i.mx || 0, moveY: i.my || 0, aimX: i.ax || 0, aimY: i.ay || 0, use: !!(i.use || i.revive || i.fire), ability: !!(i.ability || i.ping), sprint: !!(b & 64), shooter: !!(b & 128), dropBtn: !!i.drop };
+    return { moveX: i.mx || 0, moveY: i.my || 0, aimX: i.ax || 0, aimY: i.ay || 0, use: !!(i.use || i.revive || i.fire), ability: !!(i.ability || i.ping), sprint: !!(b & 64), shooter: !!(b & 128), earthG: !!(b & 256), dropBtn: !!i.drop };
   }
 
   // ---------- Input: keyboard, mouse, gamepads, touch ----------
@@ -1383,7 +1383,7 @@
         hold: () => t('team.surface.goal.hold', 'Stay by the dish while the data goes home'),
         sample: () => t('team.surface.goal.pick', 'Pick up the {kind} sample', { kind: kindName(sample && sample.siteKind) }),
         scan: () => (site && site.shadow ? t('team.surface.goal.scanShadow', 'Scan the {kind} in the shadowed crater: bitter cold, watch your suit', { kind: kindName(site.siteKind) }) : t('team.surface.goal.scanSite', 'Scan the {kind} site', { kind: kindName(site && site.siteKind) })),
-        wait: () => t('team.surface.goal.wait', 'Wait by the dish for the next uplink'),
+        wait: () => t('team.surface.goal.wait', 'Wait by the dish for the orbiter to pass overhead'),
         home: () => t('team.surface.goal.home2', 'All done: return to the lander'),
         // docs/TEAM-V3.md item 5: each job's own tasks.
         align: () => t('team.surface.goal.align', 'Realign the dish: hold {e} at the dish', { e: keys.e }),
@@ -1548,14 +1548,31 @@
         // Corner: mission clock with day or night, and the next uplink.
         $('.tv-clock-time').textContent = ltr(fmtClock(s.T - s.t));
         $('.tv-daynight').innerHTML = s.sun && !s.sun.up ? ICON.moon : ICON.sun;
+        // The uplink windows are the orbiter passing overhead (it stayed in orbit as our
+        // relay, docs/TEAM-V3.md "Separation and descent"): a small sky arc shows its pass.
         const U = s.uplink;
         let up = '';
+        let pass = -1;
+        const relay = !!U && !/direct/i.test(U.label || '');
         if (U && surface && !s.over) {
-          if (U.open >= 0) up = U.planted ? t('team.surface.uplinkLive', 'Uplink live') : t('team.surface.uplinkNoDish', 'Uplink open: plant the dish');
-          else if (U.nextIn >= 0) up = t('team.surface.uplinkIn', 'Uplink in {t}', { t: ltr(fmtClock(U.nextIn)) });
+          if (U.open >= 0) {
+            up = U.planted ? t('team.surface.uplinkLive', 'Orbiter overhead: uplink live') : t('team.surface.uplinkNoDish', 'Orbiter overhead: plant the dish');
+            const w = (U.windows || []).find((x) => x.i === U.open);
+            pass = w && w.dur > 0 ? Math.max(0, Math.min(1, (s.t - w.start) / w.dur)) : 0.5;
+          } else if (U.nextIn >= 0) up = t('team.surface.uplinkIn', 'Orbiter overhead in {t}', { t: ltr(fmtClock(U.nextIn)) });
         }
-        $('.tv-uplink').textContent = up;
-        $('.tv-uplink').classList.toggle('live', !!(U && U.open >= 0 && U.planted));
+        let upHtml = up ? esc(up) : '';
+        if (up && relay) {
+          const a = Math.PI * (1 - Math.max(0, pass));
+          const dot = pass >= 0 ? `<circle cx="${(17 + 13 * Math.cos(a)).toFixed(1)}" cy="${(16 - 13 * Math.sin(a)).toFixed(1)}" r="2.6" fill="currentColor"/>` : '';
+          upHtml = `<svg class="tv-pass" viewBox="0 0 34 18" width="30" height="16" aria-hidden="true"><path d="M2 16.5h30" stroke="currentColor" stroke-opacity=".45" fill="none"/><path d="M4 16a13 13 0 0 1 26 0" stroke="currentColor" stroke-opacity=".55" stroke-dasharray="2 2.4" fill="none"/>${dot}</svg><span>${upHtml}</span>`;
+        }
+        const upEl = $('.tv-uplink');
+        if (upEl.dataset.html !== upHtml) {
+          upEl.dataset.html = upHtml;
+          upEl.innerHTML = upHtml;
+        }
+        upEl.classList.toggle('live', !!(U && U.open >= 0 && U.planted));
 
         // The one alarm.
         const alarm = surface ? alarmOf(s, o.client ? me : null) || (o.client ? null : alarmOf(s, null)) : null;
@@ -1818,7 +1835,7 @@
       const mine = (id) => me && id === me.id;
       switch (ev.type) {
         case 'windowOpen':
-          return [s.uplink && s.uplink.planted ? t('team.surface.n.window', 'Uplink window open: data is going home') : t('team.surface.n.windowNoDish', 'Uplink window open: plant the dish'), 'info', 2600];
+          return [s.uplink && s.uplink.planted ? t('team.surface.n.window', 'The orbiter is overhead: data is going home') : t('team.surface.n.windowNoDish', 'The orbiter is overhead: plant the dish'), 'info', 2600];
         case 'windowClose':
           return [t('team.surface.n.windowDone', '{g} Gbit sent home', { g: ltr(Math.round(ev.sentGbit || 0)) }), 'good', 2400];
         case 'scanDone':

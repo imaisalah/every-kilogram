@@ -1004,3 +1004,180 @@ test('every surface and results string has Arabic (view-surface, the sim summary
   const missing = [...keys].filter((k) => !AR[k]);
   assert.deepStrictEqual(missing, []);
 });
+
+// ---------- Real gravity (docs/GRAVITY.md) ----------
+const MOVE_WORLDS = { moon: 1.62, mars: 3.71, venus: 8.71, europa: 1.315 };
+
+// Run stepMove from rest at the world's top speed for `runS`, release, and return the
+// distance slid to a stop, the time to 90% speed and the stop time.
+function runAndStop(world, g, runS) {
+  const st = S.create(S.fixture('good', world), 7, 0, {});
+  // An open stretch of flat floor (no rock, no ice) to run along +x.
+  const map = { tiles: st.map.tiles.map(() => 0) };
+  const top = S.TUNE.moveSpeed * S.WORLDS[world].speed;
+  let p = { x: 40, z: 96, vx: 0, vz: 0, r: 0.6, speed: top };
+  let t90 = null;
+  for (let i = 0; i < Math.round(runS / S.TICK); i++) {
+    p = Object.assign(S.stepMove(p, { moveX: 1, moveY: 0, g }, S.TICK, map), { speed: top });
+    if (t90 === null && p.vx >= 0.9 * top) t90 = (i + 1) * S.TICK;
+  }
+  const x0 = p.x;
+  let n = 0;
+  while (Math.hypot(p.vx, p.vz) > 0.01 && n < 600) {
+    p = Object.assign(S.stepMove(p, { moveX: 0, moveY: 0, g }, S.TICK, map), { speed: top });
+    n++;
+  }
+  return { stop: p.x - x0, stopS: n * S.TICK, t90, top };
+}
+
+test('gravity: each world has its real surface gravity; the toggle gives Earth everywhere', () => {
+  for (const [w, g] of Object.entries(MOVE_WORLDS)) {
+    assert.strictEqual(S.gravityOf(w), g, w);
+    assert.strictEqual(S.feelG(w, true), g, w);
+    assert.strictEqual(S.feelG(w, false), S.EARTH_G, w + ' with Realistic gravity off');
+  }
+  assert.strictEqual(S.EARTH_G, 9.81);
+  assert.strictEqual(S.gravityOf('nowhere'), S.EARTH_G);
+});
+
+test('gravity: traction is proportional to g (a <= k mu g), half on ice', () => {
+  for (const g of Object.values(MOVE_WORLDS).concat([S.EARTH_G])) {
+    assert.ok(Math.abs(S.traction(g) - S.MOVE.tractionK * S.MOVE.mu * g) < 1e-9);
+    assert.ok(Math.abs(S.traction(g, true) - S.MOVE.tractionK * S.MOVE.iceMu * g) < 1e-9);
+  }
+  assert.ok(Math.abs(S.traction(1.62) / S.traction(9.81) - 1.62 / 9.81) < 1e-9);
+  assert.ok(Math.abs(S.stopDistance(7, 1.62) - 49 / (2 * S.traction(1.62))) < 1e-9);
+});
+
+test('gravity: the gait follows the Froude number, Polet et al. take-off speed and h = vz²/2g', () => {
+  const L = S.MOVE.legL;
+  for (const g of Object.values(MOVE_WORLDS).concat([S.EARTH_G])) {
+    // Walk below Fr 0.5, run above: the transition speed is sqrt(0.5 g L).
+    const vt = Math.sqrt(0.5 * g * L);
+    assert.strictEqual(S.gait(vt * 0.95, g).gait, 'walk', 'walks below the transition at g=' + g);
+    assert.notStrictEqual(S.gait(vt * 1.05, g).gait, 'walk', 'runs above the transition at g=' + g);
+    const v = 6;
+    const G = S.gait(v, g);
+    assert.ok(Math.abs(G.froude - (v * v) / (g * L)) < 1e-9);
+    const vz = S.MOVE.vzEarth(v) * Math.sqrt(g / S.EARTH_G);
+    assert.ok(Math.abs(G.vz - vz) < 1e-9);
+    assert.ok(Math.abs(G.flightS - (2 * vz) / g) < 1e-9, 'flight = 2 vz / g');
+    assert.ok(Math.abs(G.apex - (vz * vz) / (2 * g)) < 1e-9, 'apex = vz² / 2g');
+    assert.ok(Math.abs(G.cadence - 1 / (G.contactS + G.flightS)) < 1e-9);
+    assert.ok(Math.abs(G.stepLen - v / G.cadence) < 1e-9);
+  }
+  // With vz proportional to sqrt(g) the ballistic height is the same on every world (Polet
+  // et al. 2018), while the time in the air grows as 1/sqrt(g): the low-gravity float.
+  const moon = S.gait(7.5, 1.62);
+  const earth = S.gait(7.5, S.EARTH_G);
+  assert.ok(Math.abs(moon.apex - earth.apex) < 1e-9);
+  assert.ok(Math.abs(moon.flightS / earth.flightS - Math.sqrt(S.EARTH_G / 1.62)) < 1e-9);
+  // At the game's running speed: a lope on the Moon, Mars and Europa, a run on Venus and Earth.
+  for (const w of ['moon', 'mars', 'europa']) assert.strictEqual(S.gait(S.TUNE.moveSpeed * S.WORLDS[w].speed, S.gravityOf(w)).gait, 'lope', w);
+  assert.strictEqual(S.gait(S.TUNE.moveSpeed * S.WORLDS.venus.speed, S.gravityOf('venus')).gait, 'run');
+  assert.strictEqual(S.gait(S.TUNE.moveSpeed, S.EARTH_G).gait, 'run');
+  assert.ok(S.gait(7.5, 1.62).cadence < S.gait(7.5, S.EARTH_G).cadence, 'fewer, longer steps on the Moon');
+  // Walking cadence scales with sqrt(g) at the same Froude number (dynamic similarity).
+  const fr = 0.25;
+  const wm = S.gait(Math.sqrt(fr * 1.62 * L), 1.62);
+  const we = S.gait(Math.sqrt(fr * S.EARTH_G * L), S.EARTH_G);
+  assert.ok(Math.abs(wm.cadence / we.cadence - Math.sqrt(1.62 / S.EARTH_G)) < 1e-9);
+});
+
+test('gravity: a hop is v0²/2g high and 2·v0/g long (Apollo 16: 0.42 m, 1.45 s on the Moon)', () => {
+  for (const g of Object.values(MOVE_WORLDS).concat([S.EARTH_G])) {
+    const h = S.hopOf(g);
+    assert.ok(Math.abs(h.height - (h.v0 * h.v0) / (2 * g)) < 1e-12);
+    assert.ok(Math.abs(h.airS - (2 * h.v0) / g) < 1e-12);
+  }
+  const moon = S.hopOf(1.62);
+  assert.ok(Math.abs(moon.height - 0.42) < 0.01, 'John Young: 0.42 m');
+  assert.ok(Math.abs(moon.airS - 1.45) < 0.02, 'John Young: 1.45 s');
+});
+
+test('gravity: dust flies clean parabolas without air (Moon, Europa) and drags in air (Mars, Venus)', () => {
+  for (const w of ['moon', 'europa']) {
+    const d = S.dustOf(w);
+    assert.ok(d.airless && d.drag === 0 && d.fineG === d.g, w);
+  }
+  for (const w of ['mars', 'venus']) {
+    const d = S.dustOf(w);
+    assert.ok(!d.airless && d.drag > 0 && d.fineG < d.g, w);
+  }
+  assert.ok(S.dustOf('venus').drag > S.dustOf('mars').drag, 'denser air drags more');
+});
+
+test('gravity: stopping distance and start follow traction: under 0.5 m on Venus, metres on the Moon', () => {
+  const out = {};
+  for (const w of Object.keys(MOVE_WORLDS)) out[w] = runAndStop(w, S.gravityOf(w), 2.5);
+  assert.ok(out.venus.stop < 0.5, 'Venus stop ' + out.venus.stop);
+  assert.ok(out.moon.stop > 2 && out.moon.stop < 3.5, 'Moon stop ' + out.moon.stop);
+  assert.ok(out.europa.stop > out.moon.stop, 'Europa slides further than the Moon');
+  assert.ok(out.mars.stop > out.venus.stop && out.mars.stop < out.moon.stop, 'Mars in between');
+  assert.ok(out.moon.t90 > out.mars.t90 && out.mars.t90 > out.venus.t90, 'starts take longer in low g');
+  // The analytic stop (v²/2a) within 20% (the last few centimetres ease off exponentially).
+  for (const w of Object.keys(MOVE_WORLDS)) {
+    const a = S.stopDistance(out[w].top, S.gravityOf(w));
+    assert.ok(Math.abs(out[w].stop - a) / a < 0.2, `${w}: ${out[w].stop} vs ${a}`);
+  }
+  // Realistic gravity off: Earth's traction on every world, the same quick stop.
+  for (const w of Object.keys(MOVE_WORLDS)) {
+    const e = runAndStop(w, S.feelG(w, false), 2.5);
+    assert.ok(e.stop < 0.5, w + ' with Earth gravity: ' + e.stop);
+    assert.ok(e.t90 <= 0.2, w + ' with Earth gravity starts at once: ' + e.t90);
+  }
+});
+
+test('gravity: turning at speed draws a wide arc on the Moon and a tight one on Venus', () => {
+  const st = S.create(S.fixture('good', 'moon'), 7, 0, {});
+  const map = { tiles: st.map.tiles.map(() => 0) };
+  const widest = (g) => {
+    let p = { x: 40, z: 96, vx: 7.2, vz: 0, r: 0.6, speed: 7.2 };
+    let carry = 0;
+    for (let i = 0; i < 90; i++) {
+      p = Object.assign(S.stepMove(p, { moveX: 0, moveY: 1, g }, S.TICK, map), { speed: 7.2 });
+      carry = Math.max(carry, p.x - 40);
+    }
+    return carry;
+  };
+  assert.ok(widest(1.62) > 3, 'Moon overshoot ' + widest(1.62));
+  assert.ok(widest(8.71) < 0.8, 'Venus overshoot ' + widest(8.71));
+  assert.ok(widest(1.62) > 4 * widest(8.71), 'the arc scales with 1/g');
+});
+
+test('gravity: stepMove stays pure and deterministic; without g it is exactly the old movement', () => {
+  const st = S.create(S.fixture('mid', 'moon'), 5, 0, {});
+  const pos = Object.freeze({ x: st.map.lander.x + 5, z: st.map.lander.z, vx: 1, vz: -0.5, r: 0.7, speed: 7 });
+  const inp = Object.freeze({ moveX: 0.6, moveY: -0.8, g: 1.62 });
+  assert.deepStrictEqual(S.stepMove(pos, inp, S.TICK, st.map), S.stepMove(pos, inp, S.TICK, st.map));
+  // The old formula, by hand (grip 0.5 a tick off ice).
+  const k = 1 - Math.pow(0.5, 1);
+  const vx = 1 + (0.6 * 7 - 1) * k;
+  const vz = -0.5 + (-0.8 * 7 + 0.5) * k;
+  const legacy = S.stepMove(pos, { moveX: 0.6, moveY: -0.8 }, S.TICK, st.map);
+  assert.strictEqual(legacy.vx, vx);
+  assert.strictEqual(legacy.vz, vz);
+  // g: 0 is the same as no g.
+  assert.deepStrictEqual(S.stepMove(pos, { moveX: 0.6, moveY: -0.8, g: 0 }, S.TICK, st.map), legacy);
+});
+
+test('gravity: in the sim a person in an eye-level view moves with real traction, bots do not', () => {
+  const firstSteps = (inputExtra) => {
+    const st = S.create(S.fixture('good', 'moon'), 11, [{ id: 'p1', name: 'P', role: 'planner' }], { difficulty: 'cadet' });
+    pastIntro(st);
+    const me = st.entities.find((e) => e.kind === 'astronaut' && e.playerId === 'p1');
+    alone(st, me);
+    const x0 = me.x;
+    const z0 = me.z;
+    for (let i = 0; i < 6; i++) S.step(st, { p1: Object.assign({ moveX: 1, moveY: 0, aimX: 1, aimY: 0 }, inputExtra) }, S.TICK);
+    return { d: Math.hypot(me.x - x0, me.z - z0), st };
+  };
+  const moon = firstSteps({ shooter: true });
+  const earth = firstSteps({ shooter: true, earthG: true });
+  const phone = firstSteps({});
+  assert.ok(moon.d < earth.d * 0.6, `Moon start ${moon.d} vs Earth ${earth.d}`);
+  assert.ok(Math.abs(earth.d - phone.d) < 0.35, `Earth feel is about the old quick start: ${earth.d} vs ${phone.d}`);
+  // Determinism with the feel on: the same inputs give the same mission.
+  const again = firstSteps({ shooter: true });
+  assert.strictEqual(fingerprint(again.st), fingerprint(moon.st));
+});

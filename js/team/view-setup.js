@@ -996,6 +996,7 @@
         <button type="button" class="ts-btn primary" data-p="resume">${esc(t('team.pause.resume', 'Resume'))}</button>
         <button type="button" class="ts-btn" data-p="back">${esc(t('team.pause.back', 'Back one step'))}</button>
         <button type="button" class="ts-btn" data-p="restart">${esc(t('team.pause.restart', 'Restart mission'))}</button>
+        <button type="button" class="ts-btn quiet" data-p="gravity" aria-pressed="true" hidden></button>
         <button type="button" class="ts-btn quiet" data-p="quit">${esc(t('team.pause.quit', 'Quit to title'))}</button>
         <p class="ts-pause-note" data-note></p>
       </div>
@@ -1040,6 +1041,12 @@
       restart.disabled = !(isLocalView(view) || view.isHost);
       restart.textContent = confirmRestart ? t('team.pause.sure', 'Tap again to restart') : t('team.pause.restart', 'Restart mission');
       box.querySelector('[data-note]').textContent = restart.disabled && !restart.hidden ? t('team.pause.hostonly', 'Only the host can restart the mission.') : '';
+      // Realistic gravity (docs/GRAVITY.md): this device's own setting, on the surface only.
+      const grav = box.querySelector('[data-p="gravity"]');
+      const gOn = !(SMD.settings && SMD.settings.realGravity === false);
+      grav.hidden = !(SMD.settings && 'realGravity' in SMD.settings && /^(landing|surface|ascent)$/.test(view.phase || ''));
+      grav.textContent = gOn ? t('team.pause.gravity.on', 'Realistic gravity: On') : t('team.pause.gravity.off', 'Realistic gravity: Off');
+      grav.setAttribute('aria-pressed', gOn ? 'true' : 'false');
     }
     function openMenu() {
       if (open) return;
@@ -1076,6 +1083,9 @@
         open = false;
         confirmRestart = false;
         ctx.send({ type: 'restart' });
+        draw();
+      } else if (what === 'gravity') {
+        if (SMD.settings) SMD.settings.realGravity = SMD.settings.realGravity === false;
         draw();
       } else if (what === 'quit') {
         open = false;

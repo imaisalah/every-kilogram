@@ -3446,15 +3446,76 @@
   color: var(--team-dim);
   align-self: center;
 }
-/* A 2D/no-post fade for the landing dive (--tf-fade set by the view). */
+/* A 2D/no-post fade for the landing dive (--tf-fade set by the view; Venus fades into its clouds). */
 .tf-flight::after {
   content: '';
   position: absolute;
   inset: 0;
   z-index: 4;
-  background: #000;
+  background: var(--tf-fade-c, #000);
   opacity: var(--tf-fade, 0);
   pointer-events: none;
+}
+/* Separation and descent (docs/TEAM-V3.md): labels on the orbiter and the lander, and Skip. */
+.tf-landtags {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+.tf-landtag {
+  position: absolute;
+  inset-block-start: 0;
+  left: 0;
+  translate: 18px -50%;
+  padding: 0.22rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(8, 12, 36, 0.66);
+  border: 1px solid rgba(174, 240, 255, 0.45);
+  color: #dff6ff;
+  font-size: clamp(0.78rem, 1.6vw, 0.95rem);
+  white-space: nowrap;
+}
+.tf-landtag.tf-flip {
+  translate: calc(-100% - 18px) -50%;
+}
+.tf-landtag::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 50%;
+  width: 12px;
+  height: 1px;
+  background: rgba(174, 240, 255, 0.6);
+}
+.tf-landtag.tf-flip::before {
+  left: auto;
+  right: -14px;
+}
+.tf-landtag[hidden] {
+  display: none;
+}
+.tf-flight[data-phase='end'] .tf-landskip {
+  display: inline-flex;
+  z-index: 6;
+}
+/* During the film the graphs step aside and the beat's name sits low and centred. */
+.tf-flight.tf-landfilm .tf-graphs {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+.tf-flight.tf-landfilm .tf-countdown.tf-land {
+  padding-block-start: 0;
+  place-items: end center;
+  padding-block-end: clamp(2.5rem, 10vh, 6rem);
+  font-size: clamp(1.25rem, 3.2vw, 2.4rem);
+  text-align: center;
+  padding-inline: 1rem;
+}
+.tf-flight[data-phase='end'] .tf-landskip[hidden] {
+  display: none;
 }
 /* ---------- Calm (docs/TEAM-V2.md): later rules here override the louder ones above ---------- */
 .tf-flight {

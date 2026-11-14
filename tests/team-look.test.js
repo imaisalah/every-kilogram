@@ -27,7 +27,7 @@ const M = SMD.music;
 const MISSIONS = ['nile', 'storms', 'moon', 'mars', 'venus', 'europa', 'cubesat'];
 const LANDS = ['moon', 'mars', 'venus', 'europa'];
 const STEPS = ['thermal', 'launcher', 'orbit', 'route', 'panels', 'batteries', 'instruments', 'antenna', 'radio', 'recorder', 'computer', 'adcs', 'lifetime', 'structure', 'propMargin', 'duty', 'processing', 'coding', 'ground', 'schedule', 'landing'];
-const MOMENTS = ['define', 'questions', 'objective', 'requirement', 'fit.good', 'fit.ok', 'fit.poor', 'review', 'review.problem', 'launch', 'cabin', 'flight.start', 'flight.eclipse', 'flight.contact', 'flight.lowbat', 'flight.overflow', 'flight.crisis', 'landing', 'surface', 'results.full', 'results.partial', 'results.none', 'results.lost', 'results.crew'];
+const MOMENTS = ['define', 'questions', 'objective', 'requirement', 'fit.good', 'fit.ok', 'fit.poor', 'review', 'review.problem', 'launch', 'cabin', 'flight.start', 'flight.eclipse', 'flight.contact', 'flight.lowbat', 'flight.overflow', 'flight.crisis', 'landing', 'separation', 'surface', 'results.full', 'results.partial', 'results.none', 'results.lost', 'results.crew'];
 const OTHERS = ['brace', 'praline', 'cairn'];
 
 // ---------- Guides ----------

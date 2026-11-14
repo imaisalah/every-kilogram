@@ -1,0 +1,70 @@
+# Real gravity on the surface (movement feel)
+
+How the astronaut you play moves on each world, what the numbers are based on, and what is a game choice. Code: the pure model in `js/team/surface-sim.js` (`GRAVITY`, `MOVE`, `feelG`, `traction`, `gait`, `hopOf`, `dustOf`, `stopDistance`, and `stepMove`'s `input.g`), the presentation in `js/team/surface3d-shooter.js`, `js/3d/character.js` (`setGravity`, `setReverse`, `setBreath`, `hop({ height, airS })`), `js/3d/astronaut.js` and `js/team/surface3d-actors.js` (`feelGravity`, `crewGravity`). Tests: `tests/team-surface.test.js` ("gravity: ...").
+
+## Setting
+
+**Settings > Realistic gravity** (on by default; `SMD.settings.realGravity`, saved per device in `ek-settings`) and a toggle in the pause menu during the landing, the surface and the ascent. Off = Earth's gravity (9.81 m/s²) for movement on every world. In multiplayer each person's own device sends its choice with its input (button bit 256, `earthG`); the host's sim reads it for that person only, so the sim stays deterministic (same inputs, same mission), and each screen draws the crew's gait with its own setting.
+
+## The numbers per world
+
+| World | g (m/s²) | × Earth | Walk→run speed (Fr 0.5) | Traction (game) | Stop from top speed | 0→top speed | Gait at game speed | Steps/s | Step | Air time per step | Hop height / air time |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Moon | 1.62 | 0.17 | 0.85 m/s | 9.7 m/s² | 2.9 m | 0.78 s | lope | 2.2 | 3.4 m | 0.33 s | 0.42 m / 1.44 s |
+| Mars | 3.71 | 0.38 | 1.29 m/s | 22.3 m/s² | 1.2 m | 0.32 s | lope | 2.9 | 2.5 m | 0.21 s | 0.18 m / 0.63 s |
+| Venus (cloud platform) | 8.71 | 0.89 | 1.98 m/s | 52.3 m/s² | 0.46 m | 0.13 s | run | 3.7 | 1.9 m | 0.14 s | 0.08 m / 0.27 s |
+| Europa | 1.315 | 0.13 | 0.77 m/s | 7.9 m/s² | 3.2 m (6.3 m on ice) | 0.89 s | lope | 2.0 | 3.5 m | 0.36 s | 0.52 m / 1.78 s |
+| Earth (setting off) | 9.81 | 1 | 2.10 m/s | 58.9 m/s² | 0.44 m | 0.12 s | run | 3.8 | 1.9 m | 0.13 s | 0.07 m / 0.24 s |
+
+Top speeds are the game's own (7.2 m/s × the world factor; sprint 1.35×) and are **not** changed: mission timing and balance depend on them. Measured in a headless browser on the real game (2026-11-14, 144 Hz headless frames): stop from a full run Moon 2.75 m in 0.76 s (0.64 s to 90% speed), Mars 0.96 m (0.25 s to 90%), Venus 0.37 m in 0.12 s (0.10 s), Europa 6.2 m (the test run crossed an ice patch; 0.75 s to 90%). With Realistic gravity off every world stops in 0.2-0.5 m (1.3 m on Europa's ice) and reaches 90% speed in 0.08-0.10 s. Input to visible movement: 1-3 frames (3-18 ms); the sim's 30 Hz tick bounds it at about 33 ms plus one frame at 60 fps. Turning 90° at a full run: 0.94 s and a 3.8 m wide arc on the Moon, 0.16 s and 0.55 m on Venus.
+
+## What each number comes from
+
+**Gravity.** Moon 1.62 and Mars 3.71 m/s² (NASA planetary fact sheets); Europa 1.315 m/s² (Planetary Society; 0.134 g). Venus: there is no surface mission; the crew works on a platform in the clouds at about 50-55 km, where the pressure is about 1 bar (NASA's HAVOC concept). Gravity there is the surface 8.87 m/s² scaled by the inverse square of the distance from the centre: 8.87 × (6052 / 6104)² ≈ 8.71 m/s² at 52 km (our calculation). Earth missions have no surface.
+
+**Walk or run: the Froude number.** Fr = v² / (g·L), L = leg length (0.9 m, scaled with each character). People switch from walking to running near Fr ≈ 0.5, and in simulated reduced gravity the switch happens at slower absolute speeds but about the same Froude number (Kram, Domingo & Ferris 1997). So the transition speed is √(0.5·g·L): 0.85 m/s on the Moon against 2.1 m/s on Earth. At the game's speeds every world is above it, so the walk shows only while starting and stopping. In very low gravity the transition creeps to somewhat higher Froude numbers and relative strides get shorter (Donelan & Kram 1997); we keep 0.5.
+
+**Walking cadence.** At equal Froude numbers walking stays dynamically similar when gravity changes (Raichlen 2008), so the step rate scales with √(g/L): `cadence = √(g/9.81) + 0.6·v` (Earth ≈ 1.0 + 0.6 v steps a second).
+
+**Running and the lope.** Froude alone does not describe running in reduced gravity (Donelan & Kram 2000). What was measured: runners' vertical take-off speed scales with √g, which lowers the ballistic height compared with an Earth-strength push (Polet, Schroeder & Bertram 2018); the time in the air grows as gravity drops (several parabolic-flight and unweighting studies) while ground contact time changes little (Chang et al. 2000, as summarised in later reviews). So: `vz = vz_Earth(v) · √(g/9.81)`, flight `= 2·vz / g`, apex `= vz² / 2g` (the same 2 cm on every world), contact `= 0.33 − 0.028·v` s (0.12 to 0.3 s), cadence `= 1 / (contact + flight)`, step `= v / cadence`. When the flight outlasts the contact and g < 0.6 g Earth we call it a **lope**: fewer, longer, floating steps. Apollo crews used four gaits: a flat-footed walk (Apollo 11), the lope (both feet off the ground, landing on one foot), a skipping stride (one foot always leading: Mitchell, Cernan) and, rarely, a two-footed kangaroo hop (Apollo Lunar Surface Journal); skipping is predicted and reported as the preferred low-gravity gait (Ackermann & van den Bogert 2012; Minetti 1998; Carr & McGee, MIT 2009). We draw a symmetric lope (the clips have no skip). Real Apollo traverse speeds were about 0.3-1 m/s walking and over 1.4 m/s (5 km/h) running (ALSJ); a 1966 NASA Langley study found loping at about 3 m/s the most natural in simulated lunar gravity. The game runs at about 7 m/s, so the lope's long air time is the real law applied at a game speed.
+
+**Starting, stopping, turning: traction.** The feet can push sideways only as hard as friction allows, a ≤ μ·g. Apollo regolith friction angles of 30-50° give μ ≈ tan(30-50°) ≈ 0.6-1.2 (estimates from bootprint and soil studies); we use μ = 1. Wheel tests under lunar gravity keep the traction *coefficient* but lose the traction *force* in proportion to g. Because the game's speeds are about twice a real suited pace, the same law is multiplied by one game constant, `tractionK = 6`, chosen so Earth stops under half a metre; the ratio between worlds stays the real one (∝ g). One limit covers speeding up, braking and turning (a friction circle), so a turn at speed draws an arc of radius v² / a: about 6 m on the Moon at a full lope, under 1 m on Venus. Aldrin reported that a stable stop from a fast pace took "two or three steps" and a sideways change "a couple of steps", with little slipping (ALSJ): our Moon stop takes about 0.75 s, one and a half lope steps. Ice patches get half the grip (`iceMu = 0.5`): the old ice ratio (0.28) gave an 11 m slide on Europa, realistic for ice but unplayable around a 2 m scan ring; this is a game choice.
+
+**Hop (Space / gamepad B).** A suited, easy two-footed push of v0 = 1.17 m/s: John Young's jump salute on Apollo 16 rose 0.42 m and lasted 1.45 s (ALSJ figures). Height `v0² / 2g`, air time `2·v0 / g`. Presentation only: the 2D sim does not know about hops.
+
+**Lean and settling.** To accelerate with a, the body leans until the ground's push passes through the centre of mass: tan θ = a / g, so the same start needs a much bigger lean in low gravity (we show half of θ, clamped to 0.3 rad forward and 0.22 rad back). Turning leans by tan θ = v·ω / g. A pendulum's time scales with √(L/g), so the body's sway settles at √(g/9.81) of Earth's rate (slower on the Moon).
+
+**Dust.** With no air, lunar dust kicked up by the Apollo 16 rover followed ballistic trajectories under gravity alone (Hsu & Horányi, LASP); without drag every grain size flies the same clean parabola and nothing billows. Our boot dust on the Moon and Europa: grains thrown back and up at 0.6-1.8 m/s, 25-60°, under g, no drag, gone when they land (`2·vy / g`, about 1.3 s on the Moon). Mars' thin air (~0.6 kPa) drags the grains and the finest dust settles slowly and trails out (Mars dust-cloud settling studies, 2024-2025); we add a few slow, drifting fines with drag. The Venus platform deck has no dust. With reduced motion the shooter emits 40% of the grains.
+
+**Footsteps.** In a vacuum you hear your steps through the suit, not the air: a low, short thump (66-76 Hz) when each foot lands (on the deck of the Venus platform a light clank), synced to the animation's foot landings; louder for a lope landing. Silent when the game sound is off.
+
+## What the player sees (presentation)
+
+- **Gait:** the rigged character's stance plays at the speed that keeps the planted foot still on the ground; the flight between steps is stretched to the time gravity gives, so the cycle slows and the strides grow; the body follows a ballistic arc in the air. Planted-foot speed measured headless: 0.7-1.0 m/s while the body moves at 7 m/s (it was the full body speed before: the clips' ground speed was measured including flight frames, half the true value; fixed for every screen that uses the rigged character).
+- **Facing:** you face where you move (pivot quickly when slow; at speed the body follows the traction-limited velocity, so arcs are wide on the Moon). Aiming (right mouse / LT), scanning and first person face where the camera looks; walking away from the aim back-pedals (the cycle runs backwards); sideways is a strafe with the chest turned to the aim.
+- **Look-at:** head and chest turn toward where the camera aims (±1.2 rad). Breathing at about 15 a minute, faster and deeper after running; small weight shifts and glances when standing. Carrying a sample: both arms round it, a little forward.
+- **Camera:** a critically damped spring arm (lag 2v/ω, about 0.7 m at a full run), collision (pulls in at once, eases out), sprint lens kick (+7°, none with reduced motion), aim zoom (46° and 2.5 m over the shoulder), shoulder swap (C / right-stick click), head-bob only in first person from the gait's own stance dip and flight arc (none with reduced motion). Mouse look direct or smoothed (Settings > Smooth mouse), look speed and invert Y from Settings; gamepad radial dead zones, a 1.7 power curve and a turn boost when the stick is held at the edge; touch sticks smoothed. With a gamepad or touch, the camera eases in behind a forward walk after 1.2 s without looking (Settings > Camera follows automatically).
+- **Guide:** once per landing, when Realistic gravity is on, the chosen guide says the world's gravity ("Gravity here is 1/6 of Earth's (1.62 m/s²): you bound, not walk..."), in all four guides' voices and in Arabic.
+
+## Balance
+
+Bots (and phones on a shared screen, and the suit autopilot) still move with the old quick approach (`stepMove` without `g`), bit for bit, so `tools/surface-balance.cjs` results are unchanged; top speeds are unchanged. A person in an eye-level view on the Moon or Europa loses about 0.4 s per start and stop compared with Earth; over a round that is a few seconds, and it is the point. The setting turns it off.
+
+## Sources
+
+- NASA NSSDC planetary fact sheets (Moon, Mars): https://nssdc.gsfc.nasa.gov/planetary/factsheet/index.html ; Mars fact sheet (archived): https://webarchive.library.unt.edu/eot2008/20080916015156/http://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html
+- Europa, 1.315 m/s²: The Planetary Society, https://www.planetary.org/worlds/europa
+- Venus cloud platform, ~1 bar at ~50 km, ~0.9 g: IEEE Spectrum on NASA HAVOC, https://spectrum.ieee.org/aerospace/space-flight/nasa-study-proposes-airships-cloud-cities-for-venus-exploration ; IFLScience, https://www.iflscience.com/nasa-wants-establish-floating-cloud-city-study-venus-26623
+- Kram, Domingo & Ferris (1997), Effect of reduced gravity on the preferred walk-run transition speed, J. Exp. Biol. 200: 821-826, doi:10.1242/jeb.200.4.821 (summary: https://en.wikipedia.org/wiki/Transition_from_walking_to_running)
+- Donelan & Kram (1997), The effect of reduced gravity on the kinematics of human walking, J. Exp. Biol.: https://www.sfu.ca/locomotionlab/assets/dynsimwalk1997.pdf
+- Donelan & Kram (2000), Exploring dynamic similarity in human running using simulated reduced gravity, J. Exp. Biol. 203: 2405, doi:10.1242/jeb.203.16.2405
+- Raichlen (2008), The effects of gravity on human walking: a new test of the dynamic similarity hypothesis using a predictive model, J. Exp. Biol. 211: 2767: https://cob.silverchair.com/jeb/article/211/17/2767/17730/
+- Polet, Schroeder & Bertram (2018), Reducing gravity takes the bounce out of running, J. Exp. Biol. 221, doi:10.1242/jeb.162024 (preprint: https://www.biorxiv.org/content/10.1101/123745.full.pdf)
+- Ackermann & van den Bogert (2012), Predictive simulation of gait at low gravity reveals skipping as the preferred locomotion strategy, J. Biomech.: https://pmc.ncbi.nlm.nih.gov/articles/PMC3327825
+- Apollo Lunar Surface Journal, Apollo 11 gaits (four gaits, speeds, Aldrin on stopping): https://www.nasa.gov/wp-content/uploads/static/history/alsj/a11/a11.gaits.html
+- MIT News (2009), Taking space in stride (Carr & McGee, suit stiffness and gait): https://news.mit.edu/2009/spacesuit-0813
+- NASA Langley (1966), Comparative measurements of man's walking and running gaits in Earth and simulated lunar gravity: https://ntrs.nasa.gov/api/citations/19660019917/downloads/19660019917.pdf
+- John Young's jump salute, 0.42 m, 1.45 s, 1.17 m/s (ALSJ figures quoted): https://lunarnetworks.blogspot.com/2012/04/forty-years-ago-big-ol-navy-salute.html ; NASA image: https://moon.nasa.gov/resources/103/jumping-salute/
+- Lunar regolith strength (friction angle 30-50°, bootprints as plate-load tests): https://ntrs.nasa.gov/api/citations/20220018853/downloads/LPSC%202023%20Abstract_Connolly_Carrier_v2.pdf ; wheel traction under lunar gravity: https://link.springer.com/article/10.1007/s11214-025-01164-8
+- Ballistic dust in the Apollo 16 rover trails (Hsu & Horányi, Am. J. Phys. 80(5)): https://lasp.colorado.edu/2012/05/07/10143/
+- Mars dust clouds settling in the thin atmosphere (J. Fluid Mech. 2025): https://www.cambridge.org/core/product/530884F9CD48FABC7C2DDEF7224278D0

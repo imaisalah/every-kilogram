@@ -4,16 +4,24 @@
 // and the eye-level overlays (a small radar, the goal marker, the help card)
 // live here; the sim still owns where everyone is, in 2D.
 //
+// Feel (docs/GRAVITY.md, docs/CONTROLS.md): a spring-arm camera with lag and
+// collision, aim zoom (right button / LT), shoulder swap (C / right-stick click),
+// a sprint lens kick, head-bob only in first person; the body faces where it
+// moves, strafes and back-pedals while aiming, leans into turns by a = v·ω vs g,
+// turns head and chest toward the aim, breathes, hops (Space / B) as high and as
+// long as gravity allows, and kicks up dust that flies like it would on that world.
+//
 //   const sh = createShooter({ renderer, stage, myId, S, audio, onPause, solo });
 //   sh.frame(dt, t, state);   // before the renderer draws
 //   sh.input();               // sim input for this player, this frame
 //   sh.raw();                 // the same as a compact controller message
 //   sh.setActive(bool);       // false during landing, launch and pause
 //   sh.view                   // 'tpp' | 'fpp' | 'group'
+//   sh.yaw                    // the body's facing (sim heading convention)
 //   sh.dispose();
 import { THREE } from '../3d/engine.js';
-import { makeScanner, ROLE_COLORS, SITE_COLORS } from './surface3d-actors.js';
-import { lampify, reducedMotion } from './surface3d-fx.js';
+import { makeScanner, ROLE_COLORS, SITE_COLORS, realGravityOn } from './surface3d-actors.js';
+import { lampify, reducedMotion, createParticles } from './surface3d-fx.js';
 
 const SMD = (globalThis.SMD = globalThis.SMD || {});
 const t_ = (k, e, p) => (SMD.t ? SMD.t(k, e, p) : e);
@@ -21,7 +29,9 @@ const clamp = (x, a = 0, b = 1) => (x < a ? a : x > b ? b : x);
 const lerp = (a, b, k) => a + (b - a) * k;
 const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * dt));
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+const dampAngle = (a, b, rate, dt) => a + wrap(b - a) * (1 - Math.exp(-rate * dt));
 const VIEW_KEY = 'ek-surface-view';
+const EARTH_G = 9.81;
 
 export function loadView() {
   try {
@@ -38,32 +48,63 @@ function saveView(v) {
   } catch (e) {}
 }
 
-// Tuning: distances in metres, angles in radians.
+// Tuning: distances in metres, angles in radians, rates per second.
 const RIG = {
-  tpp: { dist: 5.9, height: 1.75, shoulder: 0.9, fov: 60 },
-  fpp: { eye: 1.66, fov: 74 },
+  tpp: { dist: 4.5, height: 1.62, shoulder: 0.72, fov: 58 },
+  aim: { dist: 2.5, height: 1.58, shoulder: 0.62, fov: 46 },
+  fpp: { eye: 1.66, fov: 74, aimFov: 60 },
   pitchMin: -1.15,
   pitchMax: 1.2,
-  sprintFov: 4,
+  sprintFov: 7, // the lens widens this much at a full sprint (not with reduced motion)
+  lagTpp: 22, // spring-arm stiffness (critically damped, 1/s): lag 2v/ω, ~0.7 m at a full run
+  lagFpp: 45,
+  lagY: 7, // the camera rides over bounds and hops softly
 };
+// Sticks: a radial dead zone, then a power curve (fine aim near the centre).
+const PAD = { moveDead: 0.15, lookDead: 0.13, outer: 0.95, moveCurve: 1.0, lookCurve: 1.7, lookYaw: 3.4, lookPitch: 2.3, boost: 1.6, boostAfter: 0.3 };
+
+// Radial dead zone + response curve, for the tests' sake kept pure.
+export function stickCurve(x, y, dead, outer, curve) {
+  const m = Math.hypot(x, y);
+  if (!(m > dead)) return [0, 0];
+  const k = Math.pow(clamp((m - dead) / (outer - dead)), curve);
+  return [(x / m) * k, (y / m) * k];
+}
 
 export function createShooter(o) {
   const { renderer, stage, myId } = o;
+  const S = o.S || (SMD.team && SMD.team.surface) || null;
   const camera = renderer.camera;
   const scene = renderer.scene;
   const world = renderer.world;
   const reduced = reducedMotion();
+  const cfg = renderer.worldConfig || {};
+  // The world: from the first state, guessed from the renderer's gravity until then.
+  let worldId = null;
+  if (S && S.GRAVITY && cfg.gravity) {
+    let best = 9;
+    for (const k in S.GRAVITY) {
+      const d = Math.abs(S.GRAVITY[k] - Math.abs(cfg.gravity));
+      if (d < best && d < 0.2) (best = d), (worldId = k);
+    }
+  }
 
   let view = loadView();
   let active = false;
-  let yaw = -Math.PI / 2; // looking up the map
-  let pitch = -0.1;
+  // Camera look: the target (input lands here) and the applied value (smoothed if asked).
+  let yawT = -Math.PI / 2; // looking up the map
+  let pitchT = -0.1;
+  let yaw = yawT;
+  let pitch = pitchT;
+  let face = yawT; // the body's facing, in the sim's heading convention
   let viewK = view === 'fpp' ? 1 : 0; // 0 third person, 1 first person
+  let aimK = 0;
+  let side = 1; // shoulder: 1 right, -1 left
+  let sideK = 1;
   let sprintK = 0;
   let camDist = RIG.tpp.dist;
-  let pivotY = 0;
+  const piv = { x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0 };
   let ready = false;
-  let moveAmt = 0;
   let locked = false;
   let releasing = false;
   let held = false; // a panel needs the mouse (the ascent choice): no capture
@@ -71,11 +112,33 @@ export function createShooter(o) {
   let hintSince = 0;
   let device = 'keyboard';
   let helpOpen = false;
+  let lookIdle = 9; // seconds since the player last turned the camera
+  let padBoost = 0;
   const keys = new Set();
   const edges = new Set();
-  const mouse = { use: false };
-  const inp = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, use: false, ability: false, sprint: false, shooter: true, dropBtn: false };
+  const mouse = { use: false, aim: false };
+  const inp = { moveX: 0, moveY: 0, aimX: 1, aimY: 0, use: false, ability: false, sprint: false, shooter: true, dropBtn: false, g: 0, earthG: false };
   const canvasOf = () => stage.querySelector('canvas');
+  // What the body is doing (presentation): measured from where the renderer draws it.
+  const body = { x: 0, z: 0, vx: 0, vz: 0, speed: 0, moveYaw: 0, prevMoveYaw: 0, turnRate: 0, still: 0, reverse: false, lean: 0, aiming: false, init: false };
+  const gaitCam = { ph: 0, bob: 0, sway: 0, lastStep: 0 };
+  const hop = { t: -1, air: 0, h: 0, cool: 0 };
+  let guideShown = false;
+  let guideTimer = 0;
+  const stats = { steps: 0, hops: 0 };
+
+  // ---------- Settings ----------
+  const setting = (k, d) => {
+    try {
+      const v = SMD.settings ? SMD.settings[k] : undefined;
+      return v === undefined || v === null ? d : v;
+    } catch (e) {
+      return d;
+    }
+  };
+  const sens = () => (Number(setting('lookSpeed', 1)) || 1) * 0.0021;
+  const invert = () => (setting('invertY', false) ? -1 : 1);
+  const feelG = () => (S && S.feelG ? S.feelG(worldId || 'moon', realGravityOn()) : EARTH_G);
 
   // ---------- Pointer lock: click to capture, Esc to free (and pause), never a trap ----------
   function capture() {
@@ -99,29 +162,17 @@ export function createShooter(o) {
       device = 'keyboard';
       everLocked = true;
     }
-    if (!locked) mouse.use = false;
+    if (!locked) mouse.use = mouse.aim = false;
     // Esc out of the mouse capture in a solo game is a pause, like any other game.
     if (was && !locked && !releasing && active && o.solo && o.onPause) o.onPause();
     releasing = false;
     paintHint();
   };
-  const sens = () => {
-    let k = 1;
-    try {
-      k = (SMD.settings && SMD.settings.lookSpeed) || 1;
-    } catch (e) {}
-    return k * 0.0021;
-  };
-  const invert = () => {
-    try {
-      return SMD.settings && SMD.settings.invertY ? -1 : 1;
-    } catch (e) {
-      return 1;
-    }
-  };
-  function look(dx, dy) {
-    yaw = wrap(yaw + dx * sens());
-    pitch = clamp(pitch - dy * sens() * invert(), RIG.pitchMin, RIG.pitchMax);
+  // Every look input lands on the target; the frame applies it (smoothed or not).
+  function look(dx, dy, scale = 1) {
+    yawT = wrap(yawT + dx * sens() * scale);
+    pitchT = clamp(pitchT - dy * sens() * scale * invert(), RIG.pitchMin, RIG.pitchMax);
+    if (Math.abs(dx) + Math.abs(dy) > 0.5) lookIdle = 0;
   }
   const onMove = (e) => {
     if (locked) look(e.movementX || 0, e.movementY || 0);
@@ -133,12 +184,14 @@ export function createShooter(o) {
       return;
     }
     if (e.button === 0) mouse.use = true;
+    if (e.button === 2) mouse.aim = true;
   };
   const onUp = (e) => {
     if (e.button === 0) mouse.use = false;
+    if (e.button === 2) mouse.aim = false;
   };
   const noMenu = (e) => e.preventDefault();
-  const GAME = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyQ', 'KeyV', 'KeyH', 'Space', 'KeyX']);
+  const GAME = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyE', 'KeyQ', 'KeyV', 'KeyH', 'Space', 'KeyX', 'KeyC']);
   const onKeyDown = (e) => {
     if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     if (GAME.has(e.code)) e.preventDefault();
@@ -149,7 +202,7 @@ export function createShooter(o) {
   const onKeyUp = (e) => keys.delete(e.code);
   const onBlur = () => {
     keys.clear();
-    mouse.use = false;
+    mouse.use = mouse.aim = false;
   };
   document.addEventListener('pointerlockchange', onLockChange);
   document.addEventListener('mousemove', onMove);
@@ -160,8 +213,8 @@ export function createShooter(o) {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', onBlur);
 
-  // ---------- Touch: left thumb moves, right side looks ----------
-  const touch = { moveId: null, lookId: null, mx: 0, my: 0, lookX: 0, lookY: 0, baseX: 0, baseY: 0, use: false, ability: false, on: false };
+  // ---------- Touch: left thumb moves, right side looks (both smoothed) ----------
+  const touch = { moveId: null, lookId: null, mx: 0, my: 0, smx: 0, smy: 0, lookX: 0, lookY: 0, baseX: 0, baseY: 0, use: false, ability: false, hop: false, on: false };
   const onTouchStart = (e) => {
     if (e.target && e.target.closest && e.target.closest('button')) return;
     device = 'touch';
@@ -182,12 +235,9 @@ export function createShooter(o) {
   const onTouchMove = (e) => {
     for (const p of e.changedTouches) {
       if (p.identifier === touch.moveId) {
-        const dx = (p.clientX - touch.baseX) / 56;
-        const dy = (p.clientY - touch.baseY) / 56;
-        const m = Math.min(1, Math.hypot(dx, dy));
-        const a = Math.atan2(dy, dx);
-        touch.mx = Math.cos(a) * m;
-        touch.my = Math.sin(a) * m;
+        const [x, y] = stickCurve((p.clientX - touch.baseX) / 56, (p.clientY - touch.baseY) / 56, 0.12, 1, 1);
+        touch.mx = x;
+        touch.my = y;
       } else if (p.identifier === touch.lookId) {
         look((p.clientX - touch.lookX) * 2.4, (p.clientY - touch.lookY) * 2.4);
         touch.lookX = p.clientX;
@@ -223,6 +273,7 @@ export function createShooter(o) {
     <div class="tv-tbtns" hidden>
       <button data-t="use">${t_('team.surface.use', 'Use')}</button>
       <button data-t="ability">${t_('team.surface.ability', 'Ability')}</button>
+      <button data-t="hop">${t_('team.surface.hop', 'Hop')}</button>
       <button data-t="view">${t_('team.surface.view', 'View')}</button>
     </div>
     <div class="tv-help" hidden><div class="tv-help-card"></div></div>`;
@@ -238,6 +289,8 @@ export function createShooter(o) {
         e.preventDefault();
         if (k === 'view') {
           if (v) toggleView();
+        } else if (k === 'hop') {
+          if (v) edges.add('Space');
         } else touch[k] = v;
       };
       b.addEventListener('touchstart', set(true), { passive: false });
@@ -268,6 +321,9 @@ export function createShooter(o) {
       ${L('Shift', t_('team.surface.c.sprint', 'Hurry (uses more air)'))}
       ${L(t_('team.surface.c.mouse', 'Mouse'), t_('team.surface.c.look', 'Look around'))}
       ${L(t_('team.surface.c.useKeys', 'E or left button'), t_('team.surface.c.use', 'Use: hold to scan, plant the dish; tap to pick up'))}
+      ${L(t_('team.surface.c.rmb', 'Right button'), t_('team.surface.c.aimLook', 'Aim: face where you look, step sideways'))}
+      ${L(t_('team.surface.c.space', 'Space'), t_('team.surface.c.hop', 'Hop (as high as the gravity allows)'))}
+      ${L('C', t_('team.surface.c.shoulder', 'Other shoulder'))}
       ${L('Q', t_('team.surface.c.ability', 'Role skill'))}
       ${L('V', t_('team.surface.c.view', 'Third / first person'))}
       ${L('Esc', t_('team.surface.c.esc', 'Free the mouse and pause'))}
@@ -296,9 +352,9 @@ export function createShooter(o) {
     setView(view === 'fpp' ? 'tpp' : 'fpp');
   }
   let nameT = 0;
-  function showName() {
+  function showName(text) {
     const el = $('.tv-viewname');
-    el.textContent = view === 'fpp' ? t_('team.surface.v.fpp', 'First person') : view === 'tpp' ? t_('team.surface.v.tpp', 'Third person') : t_('team.surface.v.group', 'Top-down view');
+    el.textContent = text || (view === 'fpp' ? t_('team.surface.v.fpp', 'First person') : view === 'tpp' ? t_('team.surface.v.tpp', 'Third person') : t_('team.surface.v.group', 'Top-down view'));
     el.classList.add('show');
     nameT = 1.3;
   }
@@ -312,23 +368,23 @@ export function createShooter(o) {
   const sleeveCol = new THREE.Color(ROLE_COLORS[o.role] || '#ffffff').multiplyScalar(0.55);
   const sleeve = lampify(new THREE.MeshStandardMaterial({ color: sleeveCol, roughness: 0.7 }), lamps);
   const glove = lampify(new THREE.MeshStandardMaterial({ color: 0xd8dbe2, roughness: 0.8 }), lamps);
-  const mkArm = (side) => {
+  const mkArm = (sd) => {
     const g = new THREE.Group();
     const fore = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.32, 4, 10), sleeve);
     fore.rotation.x = -Math.PI / 2 + 0.3;
-    fore.position.set(side * 0.03, -0.05, 0.16);
+    fore.position.set(sd * 0.03, -0.05, 0.16);
     g.add(fore);
     const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.066, 0.06, 14), glove);
     cuff.rotation.x = -Math.PI / 2 + 0.3;
-    cuff.position.set(side * 0.02, 0.0, -0.02);
+    cuff.position.set(sd * 0.02, 0.0, -0.02);
     g.add(cuff);
     const hand = new THREE.Mesh(new THREE.IcosahedronGeometry(0.068, 2), glove);
     hand.scale.set(1.2, 0.85, 1.25);
     hand.position.set(0, 0.02, -0.08);
     g.add(hand);
     const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.05, 3, 6), glove);
-    thumb.rotation.set(Math.PI / 2, 0, side * 0.6);
-    thumb.position.set(-side * 0.05, 0.04, -0.1);
+    thumb.rotation.set(Math.PI / 2, 0, sd * 0.6);
+    thumb.position.set(-sd * 0.05, 0.04, -0.1);
     g.add(thumb);
     return g;
   };
@@ -353,6 +409,69 @@ export function createShooter(o) {
     }
   });
   const _f = new THREE.Vector3();
+  const _look = new THREE.Vector3();
+
+  // ---------- Dust from your own boots: real ballistics for this world ----------
+  // Airless (Moon, Europa): every grain flies a clean parabola under g, no drag, no cloud.
+  // Mars: thin air drags the grains and the finest dust drifts down slowly. Venus: the
+  // platform deck has no dust.
+  const dustCfg = S && S.dustOf ? S.dustOf(worldId || 'moon') : { airless: true, drag: 0, fineG: 1.62 };
+  const grains = createParticles(360, { additive: false, order: 5, drag: dustCfg.drag });
+  const fines = dustCfg.airless ? null : createParticles(200, { additive: false, order: 5, drag: dustCfg.drag * 1.8 });
+  scene.add(grains.points);
+  if (fines) scene.add(fines.points);
+  const dustCol = cfg.dust || [0.5, 0.5, 0.5];
+  const noDust = !!cfg.platform;
+  // Deterministic little noise (the game's look should not depend on Math.random order).
+  let seedN = 1234567;
+  const rnd = () => ((seedN = (seedN * 16807) % 2147483647) / 2147483647);
+  function kick(x, z, n, power, dirX, dirZ) {
+    if (noDust || reduced) n = Math.ceil(n * 0.4);
+    if (noDust) return;
+    const g = feelG();
+    const y0 = world.height(x, z) + 0.04;
+    for (let i = 0; i < n; i++) {
+      // Thrown backwards and up from the toe: 25-60 degrees, about 0.6-1.8 m/s.
+      const a = Math.atan2(-dirZ, -dirX) + (rnd() - 0.5) * 1.6;
+      const el = 0.45 + rnd() * 0.6;
+      const v = (0.6 + rnd() * 1.2) * power;
+      const vy = Math.sin(el) * v;
+      const vh = Math.cos(el) * v;
+      // Life: until it comes back down to the ground (flight time 2·vy/g).
+      const life = Math.min(4, (2 * vy) / g + 0.05);
+      const sz = 0.05 + rnd() * 0.07;
+      grains.emit(x, y0, z, Math.cos(a) * vh, vy, Math.sin(a) * vh, -g, life, sz, 0, dustCol[0], dustCol[1], dustCol[2], 0.85);
+    }
+    if (fines) {
+      // Fine dust in an atmosphere: slow to rise, slower to settle (drag; Mars ~0.6 kPa).
+      for (let i = 0; i < Math.ceil(n / 2); i++) {
+        const a = rnd() * 6.283;
+        const v = (0.3 + rnd() * 0.5) * power;
+        fines.emit(x, y0, z, Math.cos(a) * v, 0.25 + rnd() * 0.4, Math.sin(a) * v, -dustCfg.fineG * 0.35, 1.6 + rnd() * 1.4, 0.25 + rnd() * 0.25, 1, dustCol[0], dustCol[1], dustCol[2], 0.35);
+      }
+    }
+  }
+  // A soft step, heard through the suit (there is no air to carry it on the Moon).
+  function stepSound(heavy) {
+    const A = SMD.audio;
+    if (!A || !A.beep || (A.isMuted && A.isMuted())) return;
+    try {
+      A.beep((noDust ? 150 : 66) + rnd() * 10, heavy ? 0.08 : 0.055, noDust ? 'triangle' : 'sine', heavy ? 0.055 : 0.034);
+      if (!noDust && A.bang && heavy) A.bang(0.018, 0.09);
+    } catch (e) {}
+  }
+  function onFootDown(info) {
+    stats.steps++;
+    const lope = info && (info.gait === 'lope' || info.gait === 'run');
+    const foot = info && info.foot === 'l' ? -1 : 1;
+    // The foot is under the hip, a little to the side of the line of travel.
+    const rx = -Math.sin(face) * 0.13 * foot;
+    const rz = Math.cos(face) * 0.13 * foot;
+    const dx = Math.cos(face);
+    const dz = Math.sin(face);
+    kick(body.x + rx, body.z + rz, lope ? 9 : 4, lope ? 1.2 : 0.6, dx, dz);
+    stepSound(lope);
+  }
 
   // ---------- Camera collision ----------
   function solidAt(x, z, y, radius) {
@@ -491,6 +610,7 @@ export function createShooter(o) {
     if (span.textContent !== text) span.textContent = text;
   }
 
+  // ---------- Gamepad (Xbox layout) ----------
   function readPad() {
     let out = null;
     try {
@@ -503,9 +623,10 @@ export function createShooter(o) {
       }
     } catch (e) {}
     if (!out) return null;
-    const dz = (v, d) => (Math.abs(v) > d ? (v - Math.sign(v) * d) / (1 - d) : 0);
     const pressed = (i) => !!(out.buttons[i] && (out.buttons[i].pressed || out.buttons[i].value > 0.4));
-    return { mx: dz(out.axes[0], 0.16), my: dz(out.axes[1], 0.16), lx: dz(out.axes[2], 0.14), ly: dz(out.axes[3], 0.14), a: pressed(0), b: pressed(1), x: pressed(2), y: pressed(3), rt: pressed(7), l3: pressed(10), start: pressed(9) };
+    const [mx, my] = stickCurve(out.axes[0] || 0, out.axes[1] || 0, PAD.moveDead, PAD.outer, PAD.moveCurve);
+    const [lx, ly] = stickCurve(out.axes[2] || 0, out.axes[3] || 0, PAD.lookDead, PAD.outer, PAD.lookCurve);
+    return { mx, my, lx, ly, lMag: Math.hypot(out.axes[2] || 0, out.axes[3] || 0), a: pressed(0), b: pressed(1), x: pressed(2), y: pressed(3), lt: pressed(6), rt: pressed(7), l3: pressed(10), r3: pressed(11), start: pressed(9) };
   }
   const padPrev = {};
   const padEdge = (name, v) => {
@@ -514,14 +635,151 @@ export function createShooter(o) {
     return v && !was;
   };
 
+  // ---------- The guide's one line about gravity, once, after the landing ----------
+  function sayGravity() {
+    if (guideShown || !worldId || !S || !S.gravityOf) return;
+    guideShown = true;
+    if (!realGravityOn()) return;
+    const G = SMD.team && SMD.team.guide;
+    if (!G || !G.scriptFor || !G.say) return;
+    const g = S.gravityOf(worldId);
+    const params = { g: g.toFixed(2), ratio: (g / EARTH_G).toFixed(2), hop: S.hopOf(g).height.toFixed(1) };
+    try {
+      const lines = G.scriptFor(worldId, 'gravity.' + worldId, params);
+      if (lines && lines.length && lines[0].text) G.say(stage, lines, { auto: true, keep: false });
+    } catch (e) {}
+  }
+
+  // ---------- The body: facing, strafing, lean, look-at, carry, hop ----------
+  const rotYOf = (h) => Math.atan2(Math.cos(h), Math.sin(h));
+  function driveBody(actor, me, dt, t) {
+    const x = actor.x;
+    const z = actor.z;
+    if (!body.init) {
+      body.x = x;
+      body.z = z;
+      body.init = true;
+      face = yaw; // start facing where the camera looks
+    }
+    const ivx = dt > 0 ? (x - body.x) / dt : 0;
+    const ivz = dt > 0 ? (z - body.z) / dt : 0;
+    body.x = x;
+    body.z = z;
+    // A jump of more than a few metres is a correction or a teleport, not a step.
+    if (Math.hypot(ivx, ivz) < 25) {
+      body.vx = damp(body.vx, ivx, 18, dt);
+      body.vz = damp(body.vz, ivz, 18, dt);
+    }
+    body.speed = Math.hypot(body.vx, body.vz);
+    const moving = body.speed > 0.35;
+    const g = feelG();
+    if (moving) {
+      const my = Math.atan2(body.vz, body.vx);
+      body.turnRate = damp(body.turnRate, wrap(my - body.moveYaw) / Math.max(1e-3, dt), 10, dt);
+      body.moveYaw = my;
+      body.still = 0;
+    } else {
+      body.turnRate = damp(body.turnRate, 0, 8, dt);
+      body.still += dt;
+    }
+    const busy = me.useKind === 'scan' || me.state === 'scan' || me.state === 'plant' || me.state === 'repair';
+    const free = !me.aboard && !me.returning && !(me.restT > 0);
+    body.aiming = free && (aimK > 0.5 || busy || viewK > 0.5);
+    let want = face;
+    let rate = 12;
+    body.reverse = false;
+    if (body.aiming) {
+      // Aiming: the chest follows the camera; the legs go where you walk, back-pedalling
+      // when you walk away from where you look.
+      if (moving) {
+        const off = wrap(body.moveYaw - yaw);
+        if (Math.abs(off) > 1.75) {
+          want = body.moveYaw + Math.PI;
+          body.reverse = true;
+        } else want = body.moveYaw - off * 0.35;
+      } else want = yaw;
+      rate = 14;
+    } else if (moving) {
+      // Free: face where you go. Quick pivots when slow, the body follows the (traction
+      // limited) velocity when running, so the arcs are wide on the Moon.
+      want = body.moveYaw;
+      rate = lerp(16, 9, clamp(body.speed / 7));
+    } else if (body.still > 0.6 && Math.abs(wrap(yaw - face)) > 2.1) {
+      // Standing and looking behind you: turn round on the spot.
+      want = yaw;
+      rate = 5;
+    }
+    face = dampAngle(face, want, rate, dt);
+    const g3 = actor.astro;
+    const rotY = rotYOf(face);
+    actor.yaw = rotY;
+    g3.group.rotation.y = rotY;
+    if (g3.setReverse) g3.setReverse(body.reverse);
+    // Lean into turns: the ground must push sideways m·v·ω, so tan(lean) = v·ω / g.
+    const aLat = body.speed * body.turnRate;
+    const wantLean = clamp(-Math.atan2(aLat, g) * 0.5, -0.3, 0.3) * (reduced ? 0.5 : 1) * (body.aiming ? 0.3 : 1);
+    body.lean = damp(body.lean, moving ? wantLean : 0, 8 * Math.sqrt(g / EARTH_G) + 1, dt);
+    if (g3.setLean) g3.setLean(body.lean);
+    // Head and chest toward where the camera aims.
+    _look.set(camera.position.x + Math.cos(yaw) * 30, camera.position.y + Math.sin(pitch) * 30 - 0.4, camera.position.z + Math.sin(yaw) * 30);
+    if (g3.lookAt) g3.lookAt(viewK < 0.5 && free ? _look : null);
+    // Carrying a sample: both arms round it, a little forward.
+    const carrying = !!me.carrying;
+    if (carrying !== body.carry) {
+      body.carry = carrying;
+      if (g3.carry) g3.carry(carrying ? { spread: 0.25 } : false);
+    }
+    if (!body.breath && g3.setBreath) {
+      body.breath = true;
+      g3.setBreath(true);
+    }
+    if (g3.onStep !== onFootDown) g3.onStep = onFootDown;
+    // The hop.
+    hop.cool = Math.max(0, hop.cool - dt);
+    if (hop.t >= 0) {
+      hop.t += dt;
+      if (hop.t >= 0.14 + hop.air) {
+        hop.t = -1;
+        hop.cool = 0.25;
+        kick(body.x, body.z, 14, 1.3, Math.cos(face), Math.sin(face));
+        kick(body.x, body.z, 6, 0.9, -Math.cos(face), -Math.sin(face));
+        stepSound(true);
+      }
+    }
+    return free && !busy;
+  }
+  function startHop(actor, me) {
+    if (!actor || !me || hop.t >= 0 || hop.cool > 0) return;
+    if (me.aboard || me.returning || me.restT > 0 || me.useKind === 'scan') return;
+    const H = S && S.hopOf ? S.hopOf(feelG()) : { height: 0.07, airS: 0.24 };
+    hop.t = 0;
+    hop.air = H.airS;
+    hop.h = H.height;
+    stats.hops++;
+    if (actor.astro.hop) actor.astro.hop({ height: H.height, airS: H.airS });
+  }
+  // Height of the eye over the ground from the hop, now.
+  function hopY() {
+    if (hop.t < 0) return 0;
+    const x = (hop.t - 0.14) / hop.air;
+    if (x <= 0) return -0.06 * clamp(hop.t / 0.14);
+    if (x >= 1) return 0;
+    return 4 * hop.h * x * (1 - x);
+  }
+
   // ---------- Each frame, before the renderer draws ----------
   let lastGoal = null;
+  let wantHop = false;
   const api = {
     get view() {
       return view;
     },
     myId,
+    // The body's facing (the sim's heading convention): the renderer draws you this way.
     get yaw() {
+      return face;
+    },
+    get cameraYaw() {
       return yaw;
     },
     get active() {
@@ -541,6 +799,11 @@ export function createShooter(o) {
         camera.updateProjectionMatrix();
         vm.visible = false;
         renderer.setBodyHidden(myId, false);
+      } else if (!guideShown && !guideTimer) {
+        guideTimer = setTimeout(() => {
+          guideTimer = 0;
+          if (active) sayGravity();
+        }, 1600);
       }
       paintHint();
     },
@@ -571,10 +834,12 @@ export function createShooter(o) {
       if (inp.dropBtn) b |= 16;
       if (inp.sprint) b |= 64;
       b |= 128;
+      if (inp.earthG) b |= 256; // "Realistic gravity" off on this device
       return { mx: inp.moveX, my: inp.moveY, ax: inp.aimX, ay: inp.aimY, buttons: b };
     },
     // Poll devices: runs once per frame before anyone reads input().
     poll(dt) {
+      dt = Math.min(0.1, dt || 0);
       const take = (c) => {
         if (edges.has(c)) {
           edges.delete(c);
@@ -589,19 +854,31 @@ export function createShooter(o) {
       if (keys.has('KeyS')) fwd -= 1;
       if (keys.has('KeyD')) strafe += 1;
       if (keys.has('KeyA')) strafe -= 1;
-      let use = keys.has('KeyE') || keys.has('Space') || mouse.use;
+      let use = keys.has('KeyE') || mouse.use;
       let ability = keys.has('KeyQ');
       let sprint = keys.has('ShiftLeft') || keys.has('ShiftRight');
+      let aim = mouse.aim;
       let viewToggle = take('KeyV');
+      if (take('KeyC')) side = -side;
+      if (take('Space')) wantHop = true;
       if (take('KeyH')) {
         helpOpen = !helpOpen;
         if (helpOpen) release();
         paintHelp();
         paintHint();
       }
+      lookIdle += dt;
       if (pad) {
-        if (Math.abs(pad.mx) + Math.abs(pad.my) + Math.abs(pad.lx) + Math.abs(pad.ly) > 0.02 || pad.rt || pad.a) device = 'gamepad';
-        if (pad.lx || pad.ly) look(pad.lx * 900 * dt, pad.ly * 700 * dt);
+        if (Math.abs(pad.mx) + Math.abs(pad.my) + Math.abs(pad.lx) + Math.abs(pad.ly) > 0.02 || pad.rt || pad.a || pad.lt) device = 'gamepad';
+        if (pad.lx || pad.ly) {
+          // Pushed to the edge for a moment, the turn speeds up (like most console games).
+          padBoost = pad.lMag > 0.92 ? padBoost + dt : 0;
+          const boost = padBoost > PAD.boostAfter ? lerp(1, PAD.boost, clamp((padBoost - PAD.boostAfter) / 0.4)) : 1;
+          const k = (Number(setting('lookSpeed', 1)) || 1) * boost * (aimK > 0.5 ? 0.6 : 1);
+          yawT = wrap(yawT + pad.lx * PAD.lookYaw * k * dt);
+          pitchT = clamp(pitchT - pad.ly * PAD.lookPitch * k * dt * invert(), RIG.pitchMin, RIG.pitchMax);
+          lookIdle = 0;
+        } else padBoost = 0;
         if (pad.mx || pad.my) {
           strafe = pad.mx;
           fwd = -pad.my;
@@ -609,18 +886,35 @@ export function createShooter(o) {
         use = use || pad.a || pad.rt;
         ability = ability || pad.x;
         sprint = sprint || pad.l3;
+        aim = aim || pad.lt;
         if (padEdge('y', pad.y)) viewToggle = true;
+        if (padEdge('b', pad.b)) wantHop = true;
+        if (padEdge('r3', pad.r3)) side = -side;
         if (padEdge('start', pad.start) && o.onPause) o.onPause();
       }
       if (touch.on) {
-        strafe = touch.mx || strafe;
-        fwd = touch.my ? -touch.my : fwd;
+        touch.smx = damp(touch.smx, touch.mx, 22, dt);
+        touch.smy = damp(touch.smy, touch.my, 22, dt);
+        if (Math.abs(touch.smx) < 0.01 && !touch.mx) touch.smx = 0;
+        if (Math.abs(touch.smy) < 0.01 && !touch.my) touch.smy = 0;
+        strafe = touch.smx || strafe;
+        fwd = touch.smy ? -touch.smy : fwd;
         use = use || touch.use;
         ability = ability || touch.ability;
         if (Math.hypot(touch.mx, touch.my) > 0.92) sprint = true;
       }
       if (viewToggle && !helpOpen) toggleView();
       $('.tv-tbtns').hidden = !(touch.on && device === 'touch');
+
+      // Applied look: straight from the mouse, or smoothed (Settings > Smooth mouse, touch).
+      const smoothLook = setting('lookSmooth', false) || device === 'touch';
+      if (smoothLook) {
+        yaw = dampAngle(yaw, yawT, 26, dt);
+        pitch = damp(pitch, pitchT, 26, dt);
+      } else {
+        yaw = yawT;
+        pitch = pitchT;
+      }
 
       const len = Math.hypot(strafe, fwd);
       if (len > 1) {
@@ -636,14 +930,24 @@ export function createShooter(o) {
       inp.aimY = sf;
       inp.use = use && !helpOpen && active;
       inp.ability = ability && !helpOpen && active;
-      inp.sprint = sprint && fwd > 0.2 && !helpOpen;
+      // Hurry in any direction when not aiming (the body turns to run); aiming walks.
+      inp.sprint = sprint && Math.hypot(fwd, strafe) > 0.2 && !helpOpen && !aim;
       inp.dropBtn = keys.has('KeyX');
-      if (!active) inp.moveX = inp.moveY = 0;
-      sprintK = damp(sprintK, inp.sprint ? 1 : 0, 6, dt);
+      // Real gravity: the traction this player moves with (the host reads earthG).
+      inp.earthG = !realGravityOn();
+      inp.g = feelG();
+      if (!active) {
+        inp.moveX = inp.moveY = 0;
+        wantHop = false;
+      }
+      aimK = damp(aimK, aim && active && !helpOpen ? 1 : 0, 12, dt);
+      sideK = damp(sideK, side, 7, dt);
       return api;
     },
     frame(dt, t, state) {
       if (!active) return;
+      dt = Math.min(0.1, dt || 0);
+      if (state && state.world && worldId !== state.world) worldId = state.world;
       if (hintSince && !everLocked && !$('.tv-grab').hidden && performance.now() - hintSince > 12000) paintHint();
       const actor = renderer.localActor(myId);
       if (!actor) return;
@@ -653,34 +957,95 @@ export function createShooter(o) {
       if (Math.abs(viewK - wantFpp) < 0.01) viewK = wantFpp;
       nameT -= dt;
       if (nameT <= 0) $('.tv-viewname').classList.remove('show');
+      const gone = !!me.aboard;
+      const canAct = driveBody(actor, me, dt, t);
+      if (wantHop) {
+        wantHop = false;
+        if (canAct) startHop(actor, me);
+      }
       const x = actor.x;
       const z = actor.z;
+      const g = feelG();
       const groundY = world.height(x, z);
+      // Gamepad and touch: the camera eases in behind a forward walk after a moment
+      // without looking (Settings > Camera follows automatically). Never with the mouse.
+      if ((device === 'gamepad' || device === 'touch') && setting('autoCamera', true) !== false && lookIdle > 1.2 && body.speed > 1 && !body.aiming) {
+        const off = wrap(body.moveYaw - yawT);
+        if (Math.abs(off) < 1.3) yawT = wrap(yawT + off * (1 - Math.exp(-0.9 * clamp(body.speed / 6) * dt)));
+      }
+
+      // First person: the eye rides the gait (stance dip, flight arc), only without reduced motion.
+      const G = S && S.gait ? S.gait(body.speed, g, 0.92) : null;
+      if (G && body.speed > 0.05) {
+        const prev = gaitCam.ph;
+        gaitCam.ph += dt * G.cadence;
+        const u = gaitCam.ph % 1;
+        let y;
+        if (u < G.duty) y = -(0.012 + 0.012 * clamp(body.speed / 7)) * Math.sin((Math.PI * u) / G.duty);
+        else {
+          const k = (u - G.duty) / (1 - G.duty);
+          y = 4 * G.apex * k * (1 - k);
+        }
+        gaitCam.bob = damp(gaitCam.bob, y, 30, dt);
+        gaitCam.sway = Math.sin(gaitCam.ph * Math.PI) * 0.01 * clamp(body.speed / 5);
+        // In first person the body is hidden, so the steps are timed here.
+        if (viewK > 0.5 && Math.floor(gaitCam.ph) !== Math.floor(prev) && body.speed > 0.35) onFootDown({ gait: G.gait, foot: Math.floor(gaitCam.ph) % 2 ? 'l' : 'r' });
+      } else {
+        gaitCam.bob = damp(gaitCam.bob, 0, 8, dt);
+        gaitCam.sway = damp(gaitCam.sway, 0, 8, dt);
+      }
+      const bobK = reduced ? 0 : 1;
+
+      // Spring-arm pivot: a critically damped follow (lag when you set off, a soft catch-up
+      // when you stop), stiff in first person.
       if (!ready) {
-        pivotY = groundY;
+        piv.x = x;
+        piv.z = z;
+        piv.y = groundY;
         ready = true;
       }
-      pivotY = damp(pivotY, groundY, 10, dt);
+      const w = lerp(RIG.lagTpp, RIG.lagFpp, viewK);
+      // The exact critically damped step: stable at any frame time.
+      const spring = (p, v, target) => {
+        const d = piv[p] - target;
+        const e = Math.exp(-w * dt);
+        const k = (piv[v] + w * d) * dt;
+        piv[p] = target + (d + k) * e;
+        piv[v] = (piv[v] - w * k) * e;
+      };
+      if (Math.hypot(x - piv.x, z - piv.z) > 6) {
+        piv.x = x;
+        piv.z = z;
+        piv.vx = piv.vz = 0;
+      }
+      spring('x', 'vx', x);
+      spring('z', 'vz', z);
+      // Vertical: the ground plus some of the body's flight (all of it in first person).
+      const liftNow = (actor.astro.lift || 0) + hopY();
+      const yWant = groundY + lerp(0.2 * liftNow, hopY() + gaitCam.bob * bobK, viewK);
+      piv.y = damp(piv.y, yWant, lerp(RIG.lagY, 30, viewK), dt);
+
       const cp = Math.cos(pitch);
       const fx = Math.cos(yaw) * cp;
       const fy = Math.sin(pitch);
       const fz = Math.sin(yaw) * cp;
       const rx = -Math.sin(yaw);
       const rz = Math.cos(yaw);
-      moveAmt = damp(moveAmt, clamp(Math.hypot(inp.moveX, inp.moveY)), 8, dt);
-      const gone = !!me.aboard;
-      // A gentle walking sway in first person; none at all with reduced motion.
-      const eyeBob = reduced ? 0 : Math.sin(t * (5 + sprintK * 2)) * 0.012 * moveAmt;
+      const sprinting = inp.sprint && body.speed > 2;
+      sprintK = damp(sprintK, sprinting ? 1 : 0, sprinting ? 4 : 2.5, dt);
       const tp = RIG.tpp;
-      const headY = pivotY + lerp(tp.height, RIG.fpp.eye, viewK) + eyeBob * viewK;
-      const shoulder = tp.shoulder * (1 - viewK);
-      const px = x + rx * shoulder;
-      const pz = z + rz * shoulder;
-      const wantDist = lerp(tp.dist * (1 + sprintK * 0.05), 0.0, viewK);
-      const free = wantDist > 0.05 ? clearBoom(px, headY, pz, -fx, -fy, -fz, wantDist) : 0;
+      const am = RIG.aim;
+      const height = lerp(tp.height, am.height, aimK);
+      const headY = piv.y + lerp(height, RIG.fpp.eye, viewK);
+      const shoulder = lerp(tp.shoulder, am.shoulder, aimK) * sideK * (1 - viewK);
+      // In first person the eye sits at the head, not at the lagging pivot.
+      const ex = lerp(piv.x, x, viewK) + rx * (shoulder + gaitCam.sway * bobK * viewK);
+      const ez = lerp(piv.z, z, viewK) + rz * (shoulder + gaitCam.sway * bobK * viewK);
+      const wantDist = lerp(lerp(tp.dist, am.dist, aimK) * (1 + sprintK * 0.06), 0.0, viewK);
+      const free = wantDist > 0.05 ? clearBoom(ex, headY, ez, -fx, -fy, -fz, wantDist) : 0;
       // Pull in at once, ease back out: a camera that pops out of a rock is worse than one that waits.
       camDist = free < camDist ? free : damp(camDist, free, 4, dt);
-      camera.position.set(px - fx * camDist, headY - fy * camDist, pz - fz * camDist);
+      camera.position.set(ex - fx * camDist, headY - fy * camDist, ez - fz * camDist);
       _f.set(fx, fy, fz).add(camera.position);
       camera.up.set(0, 1, 0);
       camera.lookAt(_f);
@@ -689,7 +1054,8 @@ export function createShooter(o) {
         camera.far = 1800;
         camera.updateProjectionMatrix();
       }
-      const fovBase = lerp(tp.fov + sprintK * RIG.sprintFov, RIG.fpp.fov + sprintK * RIG.sprintFov * 0.6, viewK);
+      const lens = reduced ? 0 : sprintK * RIG.sprintFov;
+      const fovBase = lerp(lerp(tp.fov, am.fov, aimK) + lens, lerp(RIG.fpp.fov, RIG.fpp.aimFov, aimK) + lens * 0.6, viewK);
       if (Math.abs(camera.fov - fovBase) > 0.05) {
         camera.fov = lerp(camera.fov, fovBase, 1 - Math.exp(-10 * dt));
         camera.updateProjectionMatrix();
@@ -697,7 +1063,7 @@ export function createShooter(o) {
       camera.updateMatrixWorld();
 
       // A soft fill from the camera side, so you are never a black shape against the sun.
-      lamps.add(x + rx * 1.2 - fx * 2.5, pivotY + 2.4, z + rz * 1.2 - fz * 2.5, 9, 0.45, 0.45, 0.52);
+      lamps.add(x + rx * 1.2 - fx * 2.5, piv.y + 2.4, z + rz * 1.2 - fz * 2.5, 9, 0.45, 0.45, 0.52);
       // Your own body: gone in first person, and when the camera is on top of you.
       const hideBody = viewK > 0.5 || camDist < 0.75;
       renderer.setBodyHidden(myId, hideBody);
@@ -708,13 +1074,16 @@ export function createShooter(o) {
       const scanning = me.useKind === 'scan';
       vm.visible = viewK > 0.6 && !gone;
       if (vm.visible) {
-        const sw = reduced ? 0 : Math.sin(t * (5 + sprintK * 2)) * moveAmt;
-        const lift = scanning ? 1 : 0;
-        vm.position.set(sw * 0.008, -Math.abs(sw) * 0.008 + lift * 0.05 - (me.returning ? 0.12 : 0), lift * -0.03);
+        const sw = reduced ? 0 : Math.sin(gaitCam.ph * Math.PI) * clamp(body.speed / 6);
+        const lift = scanning ? 1 : aimK * 0.6;
+        vm.position.set(sw * 0.008, -Math.abs(sw) * 0.008 + lift * 0.05 - (me.returning ? 0.12 : 0) - (gaitCam.bob * bobK) * 0.3, lift * -0.03);
         vm.rotation.set(lift * -0.12 + sprintK * 0.12, 0, 0);
         scanner.setActive(scanning ? 1 : 0.2);
         if (scanning) lamps.add(camera.position.x + fx * 1.4, camera.position.y - 0.4, camera.position.z + fz * 1.4, 3, 0.2, 0.45, 0.5);
       }
+      const viewH = (stage.clientHeight || 720) * Math.min(2, (typeof devicePixelRatio !== 'undefined' && devicePixelRatio) || 1);
+      grains.update(t, camera, viewH);
+      if (fines) fines.update(t, camera, viewH);
 
       // Overlays.
       const fp = viewK > 0.7;
@@ -723,7 +1092,7 @@ export function createShooter(o) {
       const baseHud = stage.querySelector('.tv-hud');
       if (baseHud) baseHud.classList.toggle('tv-eyes-on', view !== 'group');
       $('.tv-helmet').style.opacity = fp ? 1 : 0;
-      $('.tv-dotsight').style.opacity = fp && !gone ? 0.6 : 0;
+      $('.tv-dotsight').style.opacity = fp && !gone ? 0.6 : aimK > 0.6 && !gone ? 0.5 : 0;
       radarT -= dt;
       if (radarT <= 0) {
         radarT = 0.12;
@@ -731,8 +1100,35 @@ export function createShooter(o) {
       }
       paintDiamond(lastGoal, { x, z });
     },
+    // For scripts and the headless checks: press keys, move the mouse, read the feel.
+    debug: {
+      key(code, down) {
+        if (down) {
+          if (!keys.has(code)) edges.add(code);
+          keys.add(code);
+        } else keys.delete(code);
+      },
+      look(dx, dy) {
+        look(dx, dy);
+      },
+      aim(on) {
+        mouse.aim = !!on;
+      },
+      actor: () => renderer.localActor(myId),
+      setLook(y, p) {
+        yawT = yaw = wrap(y);
+        if (p != null) pitchT = pitch = clamp(p, RIG.pitchMin, RIG.pitchMax);
+      },
+      renderer,
+      state() {
+        const actor = renderer.localActor(myId);
+        const a = actor && actor.astro;
+        return { face, camYaw: yaw, camPitch: pitch, speed: body.speed, aimK, sideK, viewK, sprintK, fov: camera.fov, camDist, lift: a ? a.lift : 0, gait: a && a.gait ? Object.assign({}, a.gait) : null, mps: a ? a.mps : 0, reverse: body.reverse, lean: body.lean, g: feelG(), worldId, steps: stats.steps, hops: stats.hops, hopT: hop.t, bob: gaitCam.bob, x: body.x, z: body.z, camToBody: Math.hypot(camera.position.x - body.x, camera.position.z - body.z), pivLag: Math.hypot(piv.x - body.x, piv.z - body.z) };
+      },
+    },
     dispose() {
       this.setActive(false);
+      if (guideTimer) clearTimeout(guideTimer);
       document.removeEventListener('pointerlockchange', onLockChange);
       document.removeEventListener('mousemove', onMove);
       stage.removeEventListener('mousedown', onDown);
@@ -745,9 +1141,20 @@ export function createShooter(o) {
       stage.removeEventListener('touchmove', onTouchMove);
       stage.removeEventListener('touchend', onTouchEnd);
       stage.removeEventListener('touchcancel', onTouchEnd);
+      scene.remove(grains.points);
+      grains.points.geometry.dispose();
+      grains.points.material.dispose();
+      if (fines) {
+        scene.remove(fines.points);
+        fines.points.geometry.dispose();
+        fines.points.material.dispose();
+      }
       hud.remove();
+      if (SMD.team && SMD.team.surfaceShooter === api) SMD.team.surfaceShooter = null;
     },
   };
   setView(view, true);
+  // The live handle for headless checks and the console (cleared on dispose).
+  if (SMD.team) SMD.team.surfaceShooter = api;
   return api;
 }

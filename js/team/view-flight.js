@@ -520,6 +520,8 @@
           ).join('')}
         </section>
         <div class="tf-end" data-end hidden></div>
+        <div class="tf-landtags" data-landtags aria-hidden="true"><span class="tf-landtag" data-tag="orbiter" hidden></span><span class="tf-landtag" data-tag="lander" hidden></span></div>
+        <button type="button" class="tf-skip tf-landskip" data-landskip hidden>${esc(t('team.flight.skipland', 'Skip'))}</button>
       </div>`;
       const root = el.querySelector('.tf-flight');
       const $ = (q) => root.querySelector(q);
@@ -565,7 +567,7 @@
       const start3D = (mod) => {
         if (dead) return;
         const engine = SMD.three.engine;
-        landingLen = mod.LANDING_SECONDS;
+        landingLen = (RM && mod.LANDING_SECONDS_REDUCED) || mod.LANDING_SECONDS;
         let craft = null;
         try {
           craft = ctx.sim.toCraftDesign(info.design);
@@ -959,13 +961,9 @@
           const ll = kiloLine('landing', t('team.flight.landingnext', 'Crew: going down'));
           coach(ll.text, 'info', ll.mood);
           if (api3d) api3d.set({ mode: 'landing' });
-          if (!RM) {
-            try {
-              SMD.audio.bang(0.6, 0.9);
-              engineSnd.h = SMD.audio.engine();
-              engineSnd.h.set(0.35, 0.3);
-            } catch (e) {}
-          }
+          if (api3d && api3d.landKind === 'venus') root.style.setProperty('--tf-fade-c', '#d8b27a'); // into the clouds, not the dark
+          root.classList.add('tf-landfilm');
+          landSkipEl.hidden = false;
         } else if (r.alive === false || tDead !== null) {
           showEnding('dead');
           if (api3d) api3d.set({ end: { kind: ending, t: 0 } });
@@ -975,10 +973,81 @@
         }
       }
 
+      // ---------- Separation and descent: what the film is showing ----------
+      // The orbiter stays up as the relay; the lander goes down on its own.
+      const landSkipEl = $('[data-landskip]');
+      const tagsEl = $('[data-landtags]');
+      const tagEls = { orbiter: tagsEl.querySelector('[data-tag="orbiter"]'), lander: tagsEl.querySelector('[data-tag="lander"]') };
+      let landSkipped = false;
+      const BEAT_TEXT = {
+        docked: () => (info.body === 'venus' ? t('team.flight.beat.dockedVenus', 'Orbiter and cloud platform, docked') : t('team.flight.beat.docked', 'Orbiter and lander, docked')),
+        separation: () => t('team.flight.beat.separation', 'Separation'),
+        orbiter: () => t('team.flight.beat.orbiter', 'The orbiter stays in orbit'),
+        deorbit: () => t('team.flight.beat.deorbit', 'Deorbit burn'),
+        powered: () => t('team.flight.beat.powered', 'Rocket descent: no air here for a parachute'),
+        entry: () => t('team.flight.beat.entry', 'Entry: the heat shield glows'),
+        chute: () => t('team.flight.beat.chute', 'Parachute'),
+        retro: () => t('team.flight.beat.retro', 'Retro-rockets'),
+        balloon: () => t('team.flight.beat.balloon', 'The balloon fills'),
+        float: () => t('team.flight.beat.float', 'Floating in the clouds, about 50 km up'),
+      };
+      const beatText = (b) => (BEAT_TEXT[b] ? BEAT_TEXT[b]() : '');
+      function landBeats(beat, lt) {
+        if (beat === 'separation' && !told.sep) {
+          told.sep = 1;
+          const l = kiloLine('separation', t('team.flight.sepline', 'The orbiter stays up there. It will carry our data home.'));
+          coach(l.text, 'info', l.mood);
+          if (!RM) beep(196, 0.18, 'triangle', 0.08); // the springs let go
+        }
+        if (beat === 'deorbit' && !told.burn) {
+          told.burn = 1;
+          if (!RM) {
+            try {
+              engineSnd.h = SMD.audio.engine();
+              engineSnd.h.set(0.3, 0.3);
+            } catch (e) {}
+          }
+        }
+        if (landSkipped || lt > landingLen - 1.2) landSkipEl.hidden = true;
+        // Labels on the two craft while both are worth naming.
+        const tags = api3d && api3d.landTags ? api3d.landTags() : null;
+        const W = stageEl.clientWidth;
+        const H = stageEl.clientHeight;
+        ['orbiter', 'lander'].forEach((id) => {
+          const el = tagEls[id];
+          const p = tags && tags[id];
+          const show = !!p && p.on && tags.t > 0.5 && tags.t < (id === 'orbiter' ? 4.8 : 3.0) && !landSkipped;
+          el.hidden = !show;
+          if (!show) return;
+          if (!el.textContent) el.textContent = id === 'orbiter' ? t('team.flight.tag.orbiter', 'Orbiter: our relay') : info.body === 'venus' ? t('team.flight.tag.platform', 'Cloud platform') : t('team.flight.tag.lander', 'Lander');
+          el.style.transform = `translate(${Math.round(((p.x + 1) / 2) * W)}px, ${Math.round(((1 - p.y) / 2) * H)}px)`;
+          el.classList.toggle('tf-flip', p.x > 0.3); // near the right edge: label on the left
+        });
+      }
+      landSkipEl.addEventListener('click', () => {
+        if (landSkipped) return;
+        landSkipped = true;
+        landSkipEl.hidden = true;
+        // The host (or a solo player) moves the room on; anyone else just skips the picture.
+        if (!activeCrisis()) {
+          try {
+            ctx.send({ type: 'next' });
+          } catch (e) {}
+        }
+      });
+
       // ---------- Each animation frame ----------
       let filmPrev = 0;
+      // The separation and descent film (docs/TEAM-V3.md) starts where the old landing dive
+      // did, LAND_LEAD flight seconds before the last frame (so crises are hidden exactly as
+      // before), and runs on in real seconds into the room's short hold after the flight.
+      const LAND_LEAD = 6.5;
+      const secPerT = () => {
+        const fl = ctx.state && ctx.state.flight;
+        return fl && fl.msPerT > 0 ? fl.msPerT / 1000 : 1;
+      };
       function endingStart() {
-        if (landAfter()) return tEnd - landingLen;
+        if (landAfter()) return tEnd - Math.min(landingLen, LAND_LEAD);
         if (tDead !== null) return tDead;
         return tEndPhase;
       }
@@ -1088,8 +1157,10 @@
         // Ending: the crisis banner stays off, the rest keeps ticking until the room moves on.
         if (mode === 'end') {
           if (landAfter()) {
-            const lt = tNow - endingStart();
+            const lt = landSkipped ? landingLen : (tNow - endingStart()) * secPerT();
             const fadeK = clamp((lt - (landingLen - 1.8)) / 1.5, 0, 1);
+            const beat = api3d && api3d.landBeat ? api3d.landBeat() : null;
+            landBeats(beat, lt);
             if (lt > landingLen - 2.2 && guide && guide.clear && !told.landClear) {
               told.landClear = 1;
               guide.clear();
@@ -1102,7 +1173,7 @@
             if (lt > 0.9) {
               endEl.classList.remove('tf-show');
               const left = Math.max(1, Math.ceil(landingLen - lt));
-              const txt = t('team.flight.touchdown', 'Touchdown in {s}', { s: left });
+              const txt = beat ? beatText(beat) : t('team.flight.touchdown', 'Touchdown in {s}', { s: left });
               if (countEl.textContent !== txt) countEl.textContent = txt;
               countEl.classList.add('tf-land');
             }

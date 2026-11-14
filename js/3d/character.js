@@ -666,14 +666,37 @@ function prepClips(T, lib) {
         }
       }
     }
-    const v = sn ? sv / sn : 1;
+    const vLower = sn ? sv / sn : 1;
+    // The planted foot's speed: only frames where the ball of the foot is really down
+    // (near its lowest), so flight frames in the run clips do not water it down.
+    let pv = 0, pn = 0;
+    for (const F of [L, R]) {
+      let mn = Infinity, mx = -Infinity;
+      for (const p of F) (mn = Math.min(mn, p[1])), (mx = Math.max(mx, p[1]));
+      const th = mn + 0.1 * (mx - mn);
+      for (let i = 0; i < N; i++) {
+        if (F[i][1] <= th && F[i + 1][1] <= th) {
+          pv += -(F[i + 1][2] - F[i][2]) / dt;
+          pn++;
+        }
+      }
+    }
+    const v = pn >= 4 && pv / pn > 0.05 ? pv / pn : vLower;
     const land = [AL, AR].map((A) => {
       const mn = Math.min(...A), mx = Math.max(...A);
       const th = mn + 0.18 * (mx - mn);
       for (let i = 1; i <= N; i++) if (A[i] <= th && A[i - 1] > th) return i / N;
       return 0;
     });
-    T.loco[name] = { clip, v, dur: clip.duration, L: v * clip.duration, land };
+    // Duty factor: the share of the cycle each foot is down (low-gravity time warp).
+    let down = 0;
+    for (const A of [AL, AR]) {
+      const mn = Math.min(...A), mx = Math.max(...A);
+      const th = mn + 0.18 * (mx - mn);
+      for (let i = 0; i < N; i++) if (A[i] <= th) down++;
+    }
+    const duty = clamp(down / (2 * N), 0.18, 0.7);
+    T.loco[name] = { clip, v, vLower, dur: clip.duration, L: v * clip.duration, land, duty };
   }
   // Pelvis heights: standing and seated (for the seat fit).
   const ph = new THREE.Vector3();
@@ -1969,6 +1992,13 @@ export function createRigged(appearance, opts = {}) {
   let carry = null; // { spread, w, want }
   let reachK = 0, reachNow = 0;
   let phase = 0;
+  // Gravity (setGravity; m/s² or a function returning it): null = Earth, the clips as they are.
+  let gravity = null;
+  let gaitNow = null; // the last gait from SMD.team.surface.gait (docs/GRAVITY.md)
+  let flightU = -1; // 0..1 through the current flight phase, -1 on the ground
+  let lift = 0; // metres the body is above its clip pose (the ballistic arc)
+  let reverse = false; // back-pedalling: the cycle runs backwards
+  let breath = false, breathK = 0, exert = 0, breathPh = 0;
   let onStep = opts.onStep || null;
   let time = Math.random() * 10;
   let frameNo = 0, seenFrame = -100, forceFrames = 3, pendingDt = 0;
@@ -2065,6 +2095,13 @@ export function createRigged(appearance, opts = {}) {
     const once = clipName && CLIPS[name][1] && CLIPS[name][1].once;
     let dur = o.duration || (once ? natural : P ? P.dur : Math.max(natural, 2.2));
     act = { name, t: 0, dur, hold: !!o.hold, proc: P || null, clip: clipName || (P ? P.base : null), done: o.onDone || null, expr: P ? P.expr : null, fadeIn: (P && P.fadeIn) || 0.22, fadeOut: 0.3, w: 0, rate: P && P.rate };
+    // hop({ height, airS }): the time in the air and the height come from gravity.
+    if (name === 'hop' && o.height > 0 && o.airS > 0) {
+      act.h = o.height;
+      act.air = o.airS;
+      act.dur = 0.14 + o.airS + 0.16;
+      act.fadeOut = 0.12;
+    }
     if (clipName) {
       const a = action(clipName);
       a.reset();
@@ -2220,13 +2257,19 @@ export function createRigged(appearance, opts = {}) {
     if (!classicPose && hold && hold.classic) hold = null;
     if (classicPose && hold) hold.classic = true;
 
-    // Locomotion state.
+    // Locomotion state. In low gravity the body settles more slowly: a pendulum's time
+    // scales with sqrt(L/g), so the lean and the start/stop sway relax at sqrt(g/9.81).
+    const gNow = typeof gravity === 'function' ? Number(gravity()) || 0 : gravity;
+    const settle = gNow ? clamp(Math.sqrt(gNow / 9.81), 0.35, 1) : 1;
     speed += (speedTarget - speed) * Math.min(1, dt * 8);
     if (speed < 0.003 && speedTarget === 0) speed = 0;
     const acc = dt > 0 ? (speed - speedPrev) / dt : 0;
     speedPrev = speed;
-    accelS += (acc - accelS) * Math.min(1, dt * 8);
-    leanNow += (leanTarget - leanNow) * Math.min(1, dt * 8);
+    accelS += (acc - accelS) * Math.min(1, dt * 8 * settle);
+    leanNow += (leanTarget - leanNow) * Math.min(1, dt * 8 * settle);
+    // Breathing: about 15 breaths a minute at rest, faster and deeper after running.
+    exert = clamp(exert + (speed > 2.5 ? dt * 0.12 : -dt * 0.05), 0, 1);
+    breathK += ((breath ? 1 : 0) - breathK) * Math.min(1, dt * 2);
     floatK += (floatTarget - floatK) * Math.min(1, dt * 2.5);
     reachNow += (reachK - reachNow) * Math.min(1, dt * 6);
     if (carry) {
@@ -2263,17 +2306,48 @@ export function createRigged(appearance, opts = {}) {
       }
     }
     // Phase (shared by the moving clips) and foot landings.
+    const gaitFn = gNow && SMD.team && SMD.team.surface && SMD.team.surface.gait;
+    gaitNow = gaitFn ? gaitFn(sp, gNow, (T.standPelvis || 0.92) * s) : null;
+    flightU = -1;
     if (sp > 0.04) {
       const prev = phase;
-      phase += (dt * sp) / Lb;
       let dom = 'walk', dw = 0;
       for (const k of ['walk', 'jog', 'run', 'sprint']) if (lw[k] > dw) (dw = lw[k]), (dom = k);
-      const land = loco[dom].land;
+      const Ld = loco[dom];
+      let rate = sp / Lb; // cycles a second with the feet planted: no sliding
+      // Low gravity (docs/GRAVITY.md): the stance plays at the speed that keeps the planted
+      // foot still, the flight between steps lasts as long as gravity says (it is longer
+      // when g is low: the lope), so the cycle runs slower and the strides grow.
+      if (gaitNow && (gaitNow.gait === 'run' || gaitNow.gait === 'lope') && dom !== 'walk' && gaitNow.flightS > 0.15) {
+        const f = ((phase % 1) + 1) % 1;
+        const ls = Ld.land.slice().sort((x, y) => x - y);
+        let last = ls[ls.length - 1] - 1;
+        let next = ls[0];
+        for (let i = 0; i < ls.length; i++) {
+          if (ls[i] <= f) {
+            last = ls[i];
+            next = i + 1 < ls.length ? ls[i + 1] : ls[0] + 1;
+          }
+        }
+        const stepU = Math.max(0.2, next - last);
+        const pos = f - last;
+        const stanceU = Math.min(Ld.duty, stepU * 0.9);
+        if (pos >= stanceU) {
+          const flyU = stepU - stanceU;
+          rate = flyU / gaitNow.flightS;
+          flightU = clamp((pos - stanceU) / flyU, 0, 1);
+        }
+      }
+      phase += dt * rate * (reverse ? -1 : 1);
+      const land = Ld.land;
       for (const l of land) {
         const a = Math.floor(prev - l), b = Math.floor(phase - l);
-        if (b > a && onStep && sp > 0.35 && ground > 0.5 && !hold) onStep({ run: lw.run + lw.sprint + lw.jog > 0.5, speed: sp });
+        if (b !== a && onStep && sp > 0.35 && ground > 0.5 && !hold) onStep({ run: lw.run + lw.sprint + lw.jog > 0.5, speed: sp, gait: gaitNow ? gaitNow.gait : null, foot: l === land[0] ? 'l' : 'r' });
       }
     }
+    // The ballistic arc between steps: up at vz, down under g (apex vz²/2g).
+    const liftWant = flightU >= 0 && gaitNow ? 4 * gaitNow.apex * flightU * (1 - flightU) : 0;
+    lift += (liftWant - lift) * Math.min(1, dt * 30);
     // Shares: action over held pose over locomotion.
     if (act) {
       act.t += dt;
@@ -2358,12 +2432,25 @@ export function createRigged(appearance, opts = {}) {
     // Root bounce from actions.
     for (const k in P) delete P[k];
     if (act && act.proc) act.proc.fn(clamp(act.t / act.dur, 0, 1), act.t, P);
+    if (act && act.h != null) {
+      const x = (act.t - 0.14) / act.air;
+      const crouch = x <= 0 ? smooth(act.t / 0.14) * 0.8 : x >= 1 ? Math.max(0, 1 - (act.t - 0.14 - act.air) / 0.16) * 0.5 : 0;
+      P.legs = { crouch, tuck: x > 0 && x < 1 ? Math.sin(x * Math.PI) * 0.5 : 0 };
+      delete P.root;
+    }
     const holdP = {};
     if (hold && hold.proc) hold.proc.fn(0.5, hold.t, holdP);
     group.updateMatrixWorld(true);
     charAxes();
     _mInv.copy(group.matrixWorld).invert();
     if (P.root) rig.position.y += P.root[1] * s * actW;
+    // A gravity-true hop (hop({ height, airS })): crouch, a parabola under g, a soft landing.
+    if (act && act.h != null && actW > 0) {
+      const pre = 0.14, air = act.air;
+      const x = (act.t - pre) / air;
+      rig.position.y += (x > 0 && x < 1 ? 4 * act.h * x * (1 - x) : 0) - 0.06 * s * (x <= 0 ? smooth(act.t / pre) : x >= 1 ? Math.max(0, 1 - (act.t - pre - air) / 0.16) : 0);
+    }
+    rig.position.y += lift * ground;
     if (lieK > 0.001) {
       rig.rotation.x = -Math.PI / 2 * lieK;
       rig.position.y += 0.15 * s * lieK;
@@ -2465,11 +2552,34 @@ export function createRigged(appearance, opts = {}) {
     }
     // Reach (survival: the right hand out for a handhold).
     if (reachNow > 0.01) armIK('R', { to: [-0.06, 0.1, 0.58], pole: [-1, -0.5, 0] }, reachNow);
-    // Lean into turns, lean into starts.
+    // Lean into turns, lean into starts. With gravity set, the body leans until the push
+    // from the ground passes through the centre of mass: tan(lean) = a / g, so the same
+    // start needs a far bigger lean on the Moon (half of it shown, clamped).
     if (ground > 0 && !hold) {
       rotAxis(B.pelvis, AX.z, leanNow * 0.35 * ground);
       rotAxis(B.spine_01, AX.z, leanNow * 0.4 * ground);
-      rotAxis(B.spine_01, AX.x, clamp(accelS * 0.025, -0.08, 0.12) * ground);
+      const fwd = gNow ? clamp(Math.atan2(accelS, gNow) * 0.45, -0.22, 0.3) : clamp(accelS * 0.025, -0.08, 0.12);
+      rotAxis(B.spine_01, AX.x, fwd * ground);
+      // Carrying a sample: a little forward over the load.
+      if (carry) rotAxis(B.spine_01, AX.x, 0.06 * carry.w * ground);
+    }
+    // Breathing and small idle shifts (setBreath): the chest rises, the shoulders follow,
+    // the weight drifts between the feet; deeper and quicker after a run.
+    if (breathK > 0.01 && !reduced) {
+      const bw = breathK * (1 - actW) * (hold ? 0.4 : 1);
+      const rateB = 0.25 + exert * 0.3; // breaths a second
+      breathPh += dt * rateB * TAU;
+      const b = Math.sin(breathPh);
+      const amp = (0.012 + exert * 0.02) * bw;
+      rotAxis(B.spine_03, AX.x, -b * amp);
+      rotAxis(B.clavicle_l, AX.z, b * amp * 1.4);
+      rotAxis(B.clavicle_r, AX.z, -b * amp * 1.4);
+      const idleK = lw.idle * locoShare * bw;
+      if (idleK > 0.01) {
+        rotAxis(B.pelvis, AX.z, Math.sin(time * 0.31) * 0.025 * idleK);
+        rotAxis(B.spine_02, AX.z, -Math.sin(time * 0.31) * 0.02 * idleK);
+        rotAxis(B.Head, AX.y, Math.sin(time * 0.17 + 1.3) * 0.06 * idleK);
+      }
     }
     // Old-style joint writes: added as offsets in the character's axes.
     if (classic && !classicPose) {
@@ -2648,6 +2758,36 @@ export function createRigged(appearance, opts = {}) {
     },
     hop(o) {
       startAct('hop', o || {});
+    },
+    // Gravity for the gait (m/s², or a function that returns it; null = Earth): docs/GRAVITY.md.
+    setGravity(g) {
+      gravity = typeof g === 'function' ? g : Number(g) > 0 ? Number(g) : null;
+    },
+    // Back-pedalling: the walk and run cycles play backwards.
+    setReverse(on) {
+      reverse = !!on;
+    },
+    // A visible breath cycle and small idle shifts (the surface crew).
+    setBreath(on) {
+      breath = !!on;
+    },
+    get gait() {
+      return gaitNow;
+    },
+    // The clips' measured planted-foot speed, stride, duty and landings (for checks).
+    get loco() {
+      const out = {};
+      if (M && M.T && M.T.loco) for (const k in M.T.loco) {
+        const l = M.T.loco[k];
+        out[k] = { v: l.v * M.scale, vLower: l.vLower * M.scale, L: l.L * M.scale, dur: l.dur, duty: l.duty, land: l.land };
+      }
+      return out;
+    },
+    get lift() {
+      return lift;
+    },
+    get inFlight() {
+      return flightU >= 0;
     },
     carry(o) {
       if (o === false || o === null) {

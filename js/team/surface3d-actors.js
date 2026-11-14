@@ -10,6 +10,26 @@ const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 export const ROLE_COLORS = { planner: '#24d8ff', engineer: '#46f58a', scientist: '#ff4fb2', comms: '#ff9a1f' };
 export const ROLES = ['planner', 'engineer', 'scientist', 'comms'];
 
+// Real gravity for the crew's gait (docs/GRAVITY.md): the world's own, or Earth's with
+// Settings > "Realistic gravity" off. Read every frame, so the pause-menu toggle is live.
+const SMD_ = (globalThis.SMD = globalThis.SMD || {});
+export function realGravityOn() {
+  try {
+    return !(SMD_.settings && SMD_.settings.realGravity === false);
+  } catch (e) {
+    return true;
+  }
+}
+export function feelGravity(worldId) {
+  const S = SMD_.team && SMD_.team.surface;
+  if (!S || !S.feelG) return 9.81;
+  return S.feelG(worldId, realGravityOn());
+}
+// For astro.setGravity(): a live reader for one world.
+export function crewGravity(worldId) {
+  return () => feelGravity(worldId);
+}
+
 // Site colours by what's there to find.
 export const SITE_COLORS = { ice: '#7ad4ff', mineral: '#ffc867', atmosphere: '#b18cff', thermal: '#ff7a4a', organic: '#6dff9d' };
 

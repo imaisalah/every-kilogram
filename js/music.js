@@ -35,6 +35,14 @@
     return ctx;
   }
 
+  // Settings › Music: on/off and a volume slider (0..1, 0.5 = as tuned here).
+  const musicOn = () => !(SMD.settings && SMD.settings.music === false);
+  const userVol = () => {
+    const v = SMD.settings && Number(SMD.settings.musicVolume);
+    return Number.isFinite(v) ? Math.max(0, Math.min(2, v / 0.5)) : 1;
+  };
+  const level = () => (audio.isMuted() || !musicOn() ? 0 : fadeTarget * userVol());
+
   function t() { return ctx ? ctx.currentTime : 0; }
   function ramp(param, val, dur) { param.setTargetAtTime(val, t(), dur); }
 
@@ -454,14 +462,14 @@
     currentMood = mood;
     const m = MOODS[mood] || MOODS.hq;
     fadeTarget = m.masterVol;
-    ramp(master.gain, audio.isMuted() ? 0 : fadeTarget, instant ? 0.1 : 3);
+    ramp(master.gain, level(), instant ? 0.1 : 3);
     // Adjust swell parameters – takes effect on next swell tick.
     swellDir = swellLevel < (m.swellMin + m.swellMax) / 2 ? 1 : -1;
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
   function start() {
-    if (playing || audio.isMuted()) return;
+    if (playing || audio.isMuted() || !musicOn()) return;
     const c = getCtx();
     if (!c) return;
     playing = true;
@@ -503,12 +511,12 @@
   // ── Integration ─────────────────────────────────────────────────────────
   if (SMD.bus) {
     SMD.bus.on('settings', function (e) {
-      if (!e || e.key !== 'sound') return;
-      if (audio.isMuted()) {
+      if (!e || (e.key !== 'sound' && e.key !== 'music' && e.key !== 'musicVolume')) return;
+      if (audio.isMuted() || !musicOn()) {
         if (master) ramp(master.gain, 0, 0.5);
       } else {
         if (!playing) start();
-        else if (master) ramp(master.gain, fadeTarget, 1);
+        else if (master) ramp(master.gain, level(), e.key === 'musicVolume' ? 0.15 : 1);
       }
     });
   }

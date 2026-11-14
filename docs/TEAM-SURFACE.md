@@ -62,14 +62,14 @@ All six done is a success. The view publishes progress three ways: `SMD.team.kit
 
 ## The view (`js/team/view-surface.js`, `surface3d*.js`)
 
-- **Third person by default, V for first person** (gloved hands holding the scanner; the screen and lens light up while it reads a site), H for help, the top-down view from the help card. Mouse captures on click.
+- **Third person by default, V for first person** (gloved hands holding the scanner; the screen and lens light up while it reads a site), H for help, the top-down view from the help card. Mouse captures on click. Right mouse / LT aims (zoom over the shoulder, face where you look, strafe and back-pedal), C / right-stick click swaps the shoulder, Space / gamepad B hops (height and hang time from the world's gravity), Shift / L3 hurries in any direction. The camera is a spring arm with collision; the body faces where it moves, leans by v·ω/g, looks where you aim, breathes, and kicks up dust that flies like it would on that world (docs/GRAVITY.md).
 - **HUD**: top left the one objective line with distance and the tracker (% always, the checklist opens for a few seconds when something is done, or on hover); top right the clock (sun or moon), the next uplink and a pause button; bottom left one suit pill (air, battery, and wear only once it matters) or, on a shared screen, a quiet crew strip; bottom centre what Use does now; bottom right a small radar in eye-level view (sites, samples, the lander, the dish, teammates). One amber alarm card: radiation, the call home, or your own low air. Soft notes, one at a time, no flashing, pulsing or shaking HUD; the camera only sways on quakes and liftoff.
 - **Pause**: the session takes a handle from `SMD.team.kit.pauseMenu(stage, { ctx })`. With the shared bar on screen, its Pause button and Esc do the work, the HUD moves 52 px down and hides its own pause button; the gamepad Start button and leaving mouse capture in a solo game call `handle.open()`. Without the kit, Esc, P and a HUD pause button send the room `pause` and show a small Resume card. While `view.paused` is set the host does not step the sim.
 - **World**: the same terrain, skies and horizons; the base, the folded dish waiting on its pad, steady light pillars over the sites, samples, canisters in the caves, rockfall marks that fill in as the rock comes down, a soft shelter dome during radiation, helmet lamps at night and in storms. Nothing that reads as a vehicle.
 
 ## Tuning (`SMD.team.surface.TUNE`)
 
-Walk 7.2 m/s (Moon 1.05x, Venus 0.96x, Europa 0.98x), sprint 1.35x (+0.6 air/s). Air 100 per tank, 0.56/s (x1.25 in the cold), lander reserve 100 + 70 per spare canister, refill 40/s. Suit battery 100: 0.1/s, +0.8 scanning, +0.35 cold, +0.3 storm; recharge 30/s if the base can run the charger. Suit integrity 100, patched 6/s at the lander. Base load: 60 W idle, 140 W heat at night, 110 W lights in the dark, 160 W charger; shed charger first, then lights, then heat; 0.145 game hours per second. Carrying slows by 1.2% per kg (to 55%).
+Walk 7.2 m/s (Moon 1.05x, Venus 0.96x, Europa 0.98x), sprint 1.35x (+0.6 air/s). Air 100 per tank, 0.56/s (x1.25 in the cold), lander reserve 100 + 70 per spare canister, refill 40/s. Suit battery 100: 0.1/s, +0.8 scanning, +0.35 cold, +0.3 storm; recharge 30/s if the base can run the charger. Suit integrity 100, patched 6/s at the lander. Base load: 60 W idle, 140 W heat at night, 110 W lights in the dark, 160 W charger; shed charger first, then lights, then heat; 0.145 game hours per second. Carrying slows by 1.2% per kg (to 55%). A person in an eye-level view (input `shooter`) starts, stops and turns with real traction for the world's gravity (`input.g` in `stepMove`; `earthG` = their "Realistic gravity" is off): docs/GRAVITY.md. Bots, phones and the suit autopilot keep the old quick approach, so the balance below is unchanged.
 
 ## Balance report
 
@@ -117,14 +117,15 @@ S.summary(state);                 // scoring, objectives and consequence-chain f
 S.statusFor(state, playerId);     // small HUD payload for a phone
 S.nextGoal(state, playerId);      // { id, target: { x, z } }: the one next thing for that person
 S.fixture('good', 'mars');        // sample loadout: 'good' 'mid' 'poor' 'empty' 'maxed'
-S.stepMove(pos, input, dt, map);  // pure movement for client prediction
+S.stepMove(pos, input, dt, map);  // pure movement for client prediction (input.g: real traction, docs/GRAVITY.md)
+S.gait(v, g) / S.hopOf(g) / S.dustOf(world) / S.feelG(world, realistic)  // the gravity model the view draws with
 S.jettison(state, sampleId);      // throw a rack sample overboard during the call home
 S.STRINGS;                        // every summary and objective sentence, key -> English
 ```
 
 `players`: `[{ id, name, role, bot }]`, a number of humans, or empty; empty slots become bots unless `opts.fillBots === false`.
 
-**Inputs** `inputs[playerId] = { moveX, moveY, aimX?, aimY?, use, ability, sprint?, shooter?, jettison? }`. `use` is held (scan, plant, align; edge: pick up or set down a sample). An old controller's `fire` counts as `use`. `swap` and `weapon` are ignored.
+**Inputs** `inputs[playerId] = { moveX, moveY, aimX?, aimY?, use, ability, sprint?, shooter?, earthG?, jettison? }` (`earthG`: Realistic gravity off on that player's device; room button bit 256). `use` is held (scan, plant, align; edge: pick up or set down a sample). An old controller's `fire` counts as `use`. `swap` and `weapon` are ignored.
 
 **Loadout** (from `SMD.team.sim.surfaceLoadout`): `world, objective, spareO2, drill {id, depthM}, power {solarW, batteryWh, rtgW}, instruments [{id, name, fits, rate, value}], recorderGbit, uplink {rateGbitS, everyS, windowS, firstS, label}, landing {offsetM, inRange}, lifetimeS, ascent {liftKg}, parts`. `weapons`, `turrets`, `rover`, `drones` and `medkits` are ignored when present (a `'drill'` in `weapons` still counts as a drill).
 

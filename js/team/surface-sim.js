@@ -465,9 +465,82 @@
     if (dz && circleFree(map, e.x, e.z + dz, r)) e.z += dz;
   }
 
+  // ---------------------------------------------------------------- real gravity (docs/GRAVITY.md)
+  // Surface gravity per world in m/s² (NASA fact sheets; Venus at the ~50-55 km cloud
+  // platform, inverse-square from the surface 8.87). Top speeds stay the game's (balance);
+  // what gravity changes is traction (starting, stopping, turning) and, in the view, the gait.
+  const EARTH_G = 9.81;
+  const GRAVITY = { moon: 1.62, mars: 3.71, venus: 8.71, europa: 1.315 };
+  const MOVE = {
+    // Horizontal force is limited by friction: a <= mu * g. The game's speeds are about twice
+    // a real suited pace, so the same law is scaled by tractionK to keep Earth-like stops
+    // under half a metre; the ratio between worlds is the real one (proportional to g).
+    tractionK: 6,
+    mu: 1.0, // regolith friction angle 30-50°: tan ≈ 0.6-1.2
+    iceMu: 0.5, // ice patches: half the grip (the old ratio, 0.28, slid 11 m on Europa)
+    walkFroude: 0.5, // walk-to-run transition at Fr = v²/(gL) ≈ 0.5 (Kram, Domingo & Ferris 1997)
+    legL: 0.9, // leg length (hip height) of a 1.75 m person, m
+    // Running at speed v on Earth: ground contact time and vertical take-off speed.
+    contactS: (v) => clamp(0.33 - 0.028 * v, 0.12, 0.3),
+    vzEarth: (v) => 0.36 + 0.04 * v,
+    hopV0: 1.17, // a suited, easy two-footed hop (John Young, Apollo 16: 1.17 m/s, 0.42 m, 1.45 s)
+  };
+  const gravityOf = (world) => GRAVITY[world] || EARTH_G;
+  // What a player feels: the world's gravity, or Earth's with "Realistic gravity" off.
+  const feelG = (world, realistic) => (realistic === false ? EARTH_G : gravityOf(world));
+  // Traction-limited acceleration (m/s²) for starting, stopping and turning.
+  function traction(g, ice) {
+    return MOVE.tractionK * (ice ? MOVE.iceMu : MOVE.mu) * (g > 0 ? g : EARTH_G);
+  }
+  // The gait at ground speed v (m/s) in gravity g: walk below Fr 0.5, else a run whose
+  // vertical take-off speed scales with sqrt(g) (Polet, Schroeder & Bertram 2018), so the
+  // flight lasts longer in low gravity while contact time barely changes (Chang et al. 2000).
+  // In low gravity the flight outlasts the contact: a lope. Pure, for the view and tests.
+  function gait(v, g, legL) {
+    g = g > 0 ? g : EARTH_G;
+    const L = legL > 0 ? legL : MOVE.legL;
+    v = Math.max(0, +v || 0);
+    const froude = (v * v) / (g * L);
+    const root = Math.sqrt(g / EARTH_G);
+    if (v < 0.05) return { gait: 'stand', froude, cadence: 0, stepLen: 0, contactS: 0, flightS: 0, vz: 0, apex: 0, duty: 1, settle: root };
+    if (froude < MOVE.walkFroude) {
+      // Walking is a pendulum: at the same Froude number the step rate scales with sqrt(g/L)
+      // (dynamic similarity, Raichlen 2008). Earth: about 1.0 + 0.6 v steps a second.
+      const cadence = root + 0.6 * v;
+      return { gait: 'walk', froude, cadence, stepLen: v / cadence, contactS: 1 / cadence, flightS: 0, vz: 0, apex: 0, duty: 1, settle: root };
+    }
+    const contactS = MOVE.contactS(v);
+    const vz = MOVE.vzEarth(v) * root;
+    const flightS = (2 * vz) / g;
+    const T = contactS + flightS;
+    return { gait: flightS > contactS && g < 0.6 * EARTH_G ? 'lope' : 'run', froude, cadence: 1 / T, stepLen: v * T, contactS, flightS, vz, apex: (vz * vz) / (2 * g), duty: contactS / T, settle: root };
+  }
+  // A deliberate hop with take-off speed v0: height v0²/2g, time in the air 2 v0/g.
+  function hopOf(g, v0) {
+    g = g > 0 ? g : EARTH_G;
+    v0 = v0 > 0 ? v0 : MOVE.hopV0;
+    return { v0, height: (v0 * v0) / (2 * g), airS: (2 * v0) / g };
+  }
+  // Kicked-up dust: on airless worlds every grain flies a clean parabola under g; in air the
+  // drag slows it and the finest dust settles slowly (Mars) or hardly rises (Venus, 1 bar).
+  function dustOf(world, g) {
+    g = g > 0 ? g : gravityOf(world);
+    const air = { moon: 0, europa: 0, mars: 0.006, venus: 1 }[world]; // bar
+    const airless = !air;
+    return { g, airless, drag: airless ? 0 : world === 'venus' ? 4.5 : 0.9, fineG: airless ? g : world === 'venus' ? g * 0.1 : g * 0.22, air: air || 0 };
+  }
+  // Stopping distance from speed v (m) under the traction model, for the docs and tests.
+  function stopDistance(v, g) {
+    const a = traction(g);
+    return (v * v) / (2 * a);
+  }
+
   // Pure movement: position + input + dt + map -> new position. Nothing else feeds it, so a
   // client can run the same code for prediction. pos = { x, z, vx, vz, r, speed, instant? };
-  // speed is the top speed in m/s. instant skips acceleration.
+  // speed is the top speed in m/s. instant skips acceleration. input.g (m/s², optional): a
+  // person steering in an eye-level view moves with traction-limited acceleration for that
+  // gravity (start, stop and turn: docs/GRAVITY.md); without it (bots, phones, autopilot)
+  // the old quick approach, unchanged, so the bots' balance is untouched.
   function stepMove(pos, input, dt, map) {
     let mx = clamp(+(input && input.moveX) || 0, -1, 1);
     let mz = clamp(+(input && input.moveY) || 0, -1, 1);
@@ -476,10 +549,27 @@
       mx /= mag;
       mz /= mag;
     }
-    const grip = tileAt(map, pos.x, pos.z) === T_ICE ? 0.14 : 0.5;
+    const ice = tileAt(map, pos.x, pos.z) === T_ICE;
+    const grip = ice ? 0.14 : 0.5;
     const k = pos.instant ? 1 : 1 - Math.pow(1 - grip, dt / TICK);
-    const vx = (pos.vx || 0) + (mx * pos.speed - (pos.vx || 0)) * k;
-    const vz = (pos.vz || 0) + (mz * pos.speed - (pos.vz || 0)) * k;
+    const vx0 = pos.vx || 0;
+    const vz0 = pos.vz || 0;
+    let dvx = (mx * pos.speed - vx0) * k;
+    let dvz = (mz * pos.speed - vz0) * k;
+    const g = +(input && input.g) || 0;
+    if (g > 0 && !pos.instant) {
+      // The feet can only push as hard as friction allows: one limit for speeding up,
+      // braking and turning alike (a friction circle), so low gravity means long stops
+      // and wide arcs at speed, and a quick pivot when slow.
+      const amax = traction(g, ice) * dt;
+      const d = len(dvx, dvz);
+      if (d > amax) {
+        dvx *= amax / d;
+        dvz *= amax / d;
+      }
+    }
+    const vx = vx0 + dvx;
+    const vz = vz0 + dvz;
     const next = { x: pos.x, z: pos.z, vx, vz, r: pos.r };
     moveBy(map, next, vx * dt, vz * dt);
     return next;
@@ -1445,7 +1535,10 @@
     const mag = Math.min(1, len(mx, mz));
     p.sprinting = !!inp.sprint && mag > 0.2 && !p.carrying && p.o2 > 0;
     if (p.sprinting && !nearLander) p.o2 = Math.max(0, p.o2 - TUNE.sprintO2 * TICK);
-    const next = stepMove({ x: p.x, z: p.z, vx: p.vx, vz: p.vz, r: p.r, speed: speedOf(S, p) }, { moveX: mx, moveY: mz }, TICK, S.map);
+    // A person in an eye-level view moves with real traction for this world (or Earth's,
+    // with their "Realistic gravity" off); the same g their own device predicts with.
+    const g = inp.shooter ? feelG(S.world, !inp.earthG) : 0;
+    const next = stepMove({ x: p.x, z: p.z, vx: p.vx, vz: p.vz, r: p.r, speed: speedOf(S, p) }, { moveX: mx, moveY: mz, g }, TICK, S.map);
     p.x = next.x;
     p.z = next.z;
     p.vx = next.vx;
@@ -2712,6 +2805,8 @@
     // Kept empty so old callers that look these up find nothing to arm.
     WEAPONS: {}, ALIENS: {},
     create, step, stepMove, summary, statusFor, fixture, normalizeLoadout, ascentPlan,
+    // Real gravity (docs/GRAVITY.md): pure, for the view, the predictor and the tests.
+    EARTH_G, GRAVITY, MOVE, gravityOf, feelG, traction, gait, hopOf, dustOf, stopDistance,
     // The one next thing for a person to do, and where: { id, target: {x, z} }.
     nextGoal(S, playerId) {
       const p = S && S.entities ? S.entities.find((e) => e.kind === 'astronaut' && e.playerId === String(playerId)) : null;

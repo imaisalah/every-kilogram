@@ -32,7 +32,9 @@ export const BODIES = {
 // How long the launch film runs (the view waits for it). Short and loud.
 export const LAUNCH_SECONDS = 8.4;
 export const LAUNCH_SECONDS_REDUCED = 4;
-export const LANDING_SECONDS = 6.5;
+// The separation and descent film at the end of a flight that lands (6-10 s, skippable).
+export const LANDING_SECONDS = 9;
+export const LANDING_SECONDS_REDUCED = 6.5;
 
 // Which rocket a design flies on: real launcher ids vary, so match on the word.
 function lookFor(id) {
@@ -81,7 +83,9 @@ function beamMaterial() {
   });
 }
 
-// A tiny crew lander (the sponsor's, per docs/TEAM.md): only ever seen leaving.
+// The crew lander for airless worlds (Moon, Europa): a gold descent stage on four
+// legs under a white cabin. Docked under the orbiter, it separates and lands on
+// its own engine (docs/TEAM-V3.md "Separation and descent").
 function makeLander() {
   const g = new THREE.Group();
   const gold = new THREE.MeshStandardMaterial({ color: 0xc79a34, metalness: 0.8, roughness: 0.35, emissive: 0x201202 });
@@ -104,7 +108,112 @@ function makeLander() {
     const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.08, 10), dark);
     foot.position.set(Math.cos(a) * 4.6, -3.5, Math.sin(a) * 4.6);
     g.add(leg, foot);
+    // Four small thruster quads round the cabin: the RCS that pushes it clear.
+    const quad = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), dark);
+    quad.position.set(Math.cos(a) * 1.75, 2.4, Math.sin(a) * 1.75);
+    g.add(quad);
   }
+  g.userData.top = 4.15;
+  return g;
+}
+
+// Mars and Venus: the descent module rides in an aeroshell (a blunt heat shield
+// and a backshell), as Viking and every Mars lander since. 1 unit = 1 metre.
+function makeAeroshell() {
+  const g = new THREE.Group();
+  const shieldMat = new THREE.MeshStandardMaterial({ color: 0x5b3b28, metalness: 0.15, roughness: 0.8 });
+  const backMat = new THREE.MeshStandardMaterial({ color: 0xaeb4bc, metalness: 0.2, roughness: 0.62 });
+  const ring = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, metalness: 0.7, roughness: 0.4 });
+  const shield = new THREE.Group();
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(1.8, 0.7, 32), shieldMat);
+  cone.rotation.x = Math.PI; // the blunt nose points down (-Y)
+  cone.position.y = -0.35;
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.8, 0.07, 8, 40), ring);
+  rim.rotation.x = Math.PI / 2;
+  shield.add(cone, rim);
+  const back = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.78, 1.45, 32), backMat);
+  shell.position.y = 0.72;
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.75, 0.32, 24), ring);
+  cap.position.y = 1.6;
+  back.add(shell, cap);
+  // Small thrusters on the backshell: they turn it and fire the deorbit burn.
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU;
+    const n = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.14, 0.26, 10), ring);
+    n.position.set(Math.cos(a) * 1.05, 1.3, Math.sin(a) * 1.05);
+    back.add(n);
+  }
+  g.add(shield, back);
+  return { shield, back, top: 1.76 };
+}
+
+// A supersonic parachute: an orange and white canopy on long lines. Its origin is
+// where the lines meet the backshell; the canopy opens `riser` metres above.
+function makeChute(radius = 5.5, riser = 9) {
+  const g = new THREE.Group();
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 16;
+  const x = cv.getContext('2d');
+  for (let i = 0; i < 16; i++) {
+    x.fillStyle = i % 2 ? '#f4f1ea' : '#e2602a';
+    x.fillRect(i * 16, 0, 16, 16);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 32, 10, 0, TAU, 0, Math.PI * 0.42),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0, side: THREE.DoubleSide })
+  );
+  canopy.scale.y = 0.55;
+  canopy.position.y = riser - radius * 0.55 * Math.cos(Math.PI * 0.42);
+  const canopyG = new THREE.Group();
+  canopyG.add(canopy);
+  const rimR = radius * Math.sin(Math.PI * 0.42);
+  const pts = [];
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * TAU;
+    pts.push(new THREE.Vector3(0, 0, 0), new THREE.Vector3(Math.cos(a) * rimR, riser, Math.sin(a) * rimR));
+  }
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xd8d4cc, transparent: true, opacity: 0.7 }));
+  g.add(canopyG, lines);
+  g.userData.canopy = canopyG;
+  g.userData.riser = riser;
+  return g;
+}
+
+// Venus: no ground landing (the surface is 465 C). The crew's cloud platform hangs
+// under a balloon and floats about 50 km up, as in NASA's HAVOC concept.
+function makeAerostat() {
+  const g = new THREE.Group();
+  const skin = new THREE.MeshStandardMaterial({ color: 0xece2c6, metalness: 0.35, roughness: 0.4 });
+  const deck = new THREE.MeshStandardMaterial({ color: 0xc9ced6, metalness: 0.5, roughness: 0.45 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d33, metalness: 0.6, roughness: 0.5 });
+  const env = new THREE.Group();
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(6.5, 32, 20), skin);
+  ball.scale.y = 0.82;
+  env.add(ball);
+  // Seams, so the balloon reads as a made thing.
+  for (let i = 0; i < 6; i++) {
+    const seam = new THREE.Mesh(new THREE.TorusGeometry(6.52, 0.05, 6, 48), dark);
+    seam.rotation.y = (i / 6) * Math.PI;
+    seam.scale.y = 0.82;
+    env.add(seam);
+  }
+  env.position.y = 13;
+  const plat = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.2, 0.45, 6), deck);
+  const hab = new THREE.Mesh(new THREE.SphereGeometry(1.25, 20, 10, 0, TAU, 0, Math.PI / 2), deck);
+  hab.position.y = 0.2;
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * TAU;
+    pts.push(new THREE.Vector3(Math.cos(a) * 2.3, 0.2, Math.sin(a) * 2.3), new THREE.Vector3(Math.cos(a) * 3.2, 6.2, Math.sin(a) * 3.2));
+  }
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x3a3428 }));
+  g.add(env, plat, hab, lines);
+  g.userData.envelope = env;
+  g.userData.lines = lines;
   return g;
 }
 
@@ -350,22 +459,87 @@ export function createFlight(opts) {
     scene.add(earth);
   }
 
-  // ---------- Lander (only when the crew goes down) ----------
+  // ---------- The descent module (only when the crew goes down) ----------
+  // Docked under the orbiter for the whole orbit. At the end it separates and goes
+  // down on its own while the orbiter stays up: the relay for the surface uplinks.
+  // Moon and Europa: a legged lander on its engine. Mars: an aeroshell, a parachute,
+  // then the lander on retro-rockets. Venus: an aeroshell, a parachute, then the
+  // cloud platform under its balloon (docs/TEAM-V3.md "Separation and descent").
+  const landKind = !opts.lands ? null : body === 'mars' ? 'mars' : body === 'venus' ? 'venus' : 'legs';
   let lander = null;
   let lFlame = null;
+  let shell = null;
+  let sFlame = null;
+  let chute = null;
+  let stat = null;
   let entryGlow = null;
-  if (opts.lands) {
+  let clouds = null;
+  let dockGap = 0;
+  const fxG = new THREE.Group(); // effects that travel with the lander
+  const puffs = makeParticles(180, { size: 0.55 });
+  const trail = makeParticles(520, { size: 0.65 });
+  // Dust (Moon, Mars) or ice (Europa) blown out by the engine near the ground.
+  const dust = makeParticles(420, { size: 7 });
+  fxG.add(puffs.points, trail.points, dust.points);
+  const DUST_C = { moon: [0x77736a, 0x1e1c19], mars: [0x8a5434, 0x24130a], europa: [0x8fa6c4, 0x1d2532] }[body] || [0x77736a, 0x1e1c19];
+  // The orbiter far away: a moving dot on its orbit.
+  const orbDot = glowSprite(0xaef0ff, 0, false);
+  orbDot.scale.setScalar(0.024);
+  const popGlow = glowSprite(0xdff4ff, 0);
+  popGlow.scale.setScalar(2.4);
+  if (landKind) {
+    scene.add(fxG, orbDot, popGlow);
     lander = makeLander();
-    lander.visible = false;
+    lander.scale.setScalar(landKind === 'legs' ? 0.42 : 0.31);
     scene.add(lander);
     lFlame = rocketPlume({ cores: 0, r: 1.2, s1: 12, s2: 4, fair: 2 }, false);
     lFlame.position.y = -2.3;
     lFlame.visible = false;
     lander.add(lFlame);
-    entryGlow = glowSprite(0xff8a3a, 0);
-    entryGlow.scale.setScalar(26);
-    entryGlow.position.y = -4;
-    lander.add(entryGlow);
+    let dockTop = lander.userData.top * lander.scale.y;
+    if (landKind !== 'legs') {
+      shell = makeAeroshell();
+      scene.add(shell.shield, shell.back);
+      sFlame = rocketPlume({ cores: 0, r: 0.5, s1: 4, s2: 2, fair: 1 }, false);
+      sFlame.rotation.x = Math.PI; // fires out of the top of the backshell
+      sFlame.position.y = 1.85;
+      sFlame.visible = false;
+      shell.back.add(sFlame);
+      chute = makeChute();
+      chute.visible = false;
+      scene.add(chute);
+      entryGlow = glowSprite(0xff8a3a, 0);
+      entryGlow.scale.setScalar(8);
+      scene.add(entryGlow);
+      dockTop = shell.top;
+      lander.visible = false;
+    }
+    if (landKind === 'venus') {
+      stat = makeAerostat();
+      stat.visible = false;
+      scene.add(stat);
+      clouds = makeParticles(140, { size: 70 });
+      fxG.add(clouds.points);
+    }
+    // The shadow dims the descent module like the orbiter.
+    [lander, shell && shell.shield, shell && shell.back, chute, stat].forEach(
+      (o) =>
+        o &&
+        o.traverse((m) => {
+          if (m.isMesh && m.material && m.material.color && !mats.includes(m.material)) {
+            mats.push(m.material);
+            baseColors.push(m.material.color.clone());
+          }
+        })
+    );
+    // Docked under the bus, on the side that faces the planet.
+    craft.updateMatrixWorld(true);
+    const bb = new THREE.Box3();
+    craft.children.forEach((c) => {
+      if (c !== led) bb.expandByObject(c);
+    });
+    const bus = Math.max(0.5, Math.min(-bb.min.z, size * 0.3));
+    dockGap = bus + 0.12 + dockTop;
   }
 
   // Metals reflect a little studio light; the planet ignores it.
@@ -385,6 +559,7 @@ export function createFlight(opts) {
   let wasLink = false;
   let wasAlarm = false;
   let forced = null;
+  let landPhase = null; // the landing film holds its own orbit angle (a sunlit pass)
   const dirBeam = v3(0, 1, 0);
 
   const nextShot = (kind) => {
@@ -392,12 +567,13 @@ export function createFlight(opts) {
     const post = getPost();
     if (post && post.set) post.set({ fade: 0.0 });
   };
-  const shots = reduced ? ['hero', 'wide'] : ['hero', 'wide', 'limb', 'under', 'hero', 'top', 'wide', 'limb'];
+  // With a lander docked underneath, the shot from below would only see the lander.
+  const shots = reduced ? ['hero', 'wide'] : ['hero', 'wide', 'limb', landKind ? 'top' : 'under', 'hero', 'top', 'wide', 'limb'];
 
   const fit = () => (aspect < 1 ? 1.75 / aspect : aspect < 1.4 ? 1.3 : 1);
 
   function pose() {
-    const a = shot.kind === 'wide' ? state.fastPhase : state.phase;
+    const a = landPhase !== null ? landPhase : shot.kind === 'wide' ? state.fastPhase : state.phase;
     cw.copy(S).multiplyScalar(Math.cos(a) * rOrbit).addScaledVector(Vaxis, Math.sin(a) * rOrbit);
     P.copy(cw).normalize();
     V.copy(Vaxis).multiplyScalar(Math.cos(a)).addScaledVector(S, -Math.sin(a)).normalize();
@@ -476,7 +652,7 @@ export function createFlight(opts) {
   function lightCraft(dt) {
     const k = state.end && state.end.kind !== 'success' ? Math.max(0, 1 - state.end.t * 0.5) : 1;
     // Close-ups follow the slow orbit's own shadow crossing; the wide shot the sim's flag.
-    const inShadow = shot.kind === 'wide' ? !state.sunlitNow : Math.cos(state.phase - Math.PI) > Math.cos(beta) * 0.99;
+    const inShadow = landPhase !== null ? false : shot.kind === 'wide' ? !state.sunlitNow : Math.cos(state.phase - Math.PI) > Math.cos(beta) * 0.99;
     const targetSun = inShadow ? 0 : 1;
     sunK += (targetSun - sunK) * (1 - Math.exp(-dt * 7));
     state.sun = sunK;
@@ -625,32 +801,357 @@ export function createFlight(opts) {
     }
   }
 
-  function updateLanding(dt) {
-    const t = state.landT;
-    lander.visible = true;
-    craft.visible = t < 4.2;
-    // Drop away from the orbiter, then fire and dive.
-    const dropK = smooth(0, 1.3, t);
-    const dive = smooth(1.2, LANDING_SECONDS, t);
-    const away = -5 * dropK - alt * 0.9 * dive * dive;
-    lander.position.copy(P).multiplyScalar(away).addScaledVector(V, -size * 0.4 * dropK);
-    lander.quaternion.setFromUnitVectors(v3(0, 1, 0), tmp.copy(P).multiplyScalar(0.92).addScaledVector(V, -0.38).normalize());
-    const ignite = smooth(1.15, 1.7, t);
-    lFlame.visible = ignite > 0;
-    if (ignite > 0) setRocketPlume(lFlame, 9 + 16 * dive, 1.6 + dive * 1.8, ignite, 1, clock);
-    if (B.atmo) {
-      entryGlow.material.opacity = smooth(2.4, 4.6, t) * 0.85;
-      entryGlow.scale.setScalar(20 + 90 * dive);
+  // ---------- Separation and descent (docs/TEAM-V3.md "Separation and descent") ----------
+  // Real missions split here: the orbiter stays in orbit as the relay for the
+  // surface uplinks, and the lander separates and goes down on its own (Apollo's
+  // LM from the CSM, Viking's lander from its orbiter). landT is the film's own
+  // clock in seconds; the beats are written for 9 s and stretch to fit LD.
+  //   0    docked: the stack in orbit
+  //   1.4  springs and RCS puffs push the lander clear; the orbiter carries on
+  //   3.0  the orbiter goes on along its orbit and becomes a moving dot
+  //   3.4  deorbit burn
+  //   4.8  descent: Moon/Europa engine only; Mars heat shield, parachute, retro-rockets;
+  //        Venus heat shield, parachute, balloon, floating in the clouds
+  const LD = reduced ? LANDING_SECONDS_REDUCED : LANDING_SECONDS;
+  const LAND_A0 = 0.75; // a sunlit stretch of the orbit, the Sun behind the camera
+  const W_ORB = 0.006; // the orbiter's apparent orbit rate in the film (rad/s)
+  const RELEASE = 1.4;
+  const BURN = 3.4;
+  const CHUTE = landKind === 'venus' ? 6.2 : 6.4;
+  const SHIELD = CHUTE + 0.5; // the heat shield falls away
+  const DROP = 7.6; // Mars: the lander drops out of the backshell
+  const INFLATE = 7.0; // Venus: the balloon fills
+  const CUT = 7.9; // Venus: chute and backshell let go
+  const HAZE_C = 0xd8b27a;
+  const DESC = 4.8; // the descent starts
+  const sinkAt = (tt) => 300 * Math.max(0, tt - BURN) ** 3; // after the deorbit burn the lander starts to sink
+  const top = alt - sinkAt(DESC);
+  const KNOTS = {
+    legs: [[DESC, top], [9, 12]],
+    mars: [[DESC, top], [CHUTE, 11e3], [DROP, 1800], [9, 12]],
+    venus: [[DESC, top], [CHUTE, 90e3], [INFLATE, 62e3], [8.0, 54e3], [9, 52e3]], // HAVOC floats about 50 km up
+  };
+  const tL = v3(); // the lander (or the aeroshell) now
+  const tU = v3(); // its up (+Y)
+  const tB = v3(); // backshell
+  const tA = v3();
+  const tE = v3();
+  const camT = v3();
+  const Yax = v3(0, 1, 0);
+  const skyC = new THREE.Color();
+  const surfMat = planet.userData.surface ? planet.userData.surface.material : null;
+  const tQ = new THREE.Quaternion();
+  const qDock = new THREE.Quaternion().setFromAxisAngle(v3(1, 0, 0), Math.PI / 2);
+  let prevTT = -1;
+  let curTT = 0;
+  let viewFade = 0;
+  let haze = 0;
+
+  // Altitude in metres: log-linear between the knots, easing out on the last stretch.
+  function altAt(tt) {
+    const K = KNOTS[landKind] || KNOTS.legs;
+    if (tt <= K[0][0]) return alt - sinkAt(tt);
+    for (let i = 1; i < K.length; i++) {
+      if (tt > K[i][0]) continue;
+      let k = (tt - K[i - 1][0]) / (K[i][0] - K[i - 1][0]);
+      if (i === K.length - 1) k = 1 - (1 - k) * (1 - k);
+      return Math.exp(Math.log(K[i - 1][1]) + (Math.log(K[i][1]) - Math.log(K[i - 1][1])) * k);
     }
-    if (t < 1.3 && !reduced) shake.k = Math.max(shake.k, 0.4);
-    // Camera above and behind, looking down past the lander at the surface.
-    const d = 22;
-    camera.up.copy(P);
-    camera.position.copy(lander.position).addScaledVector(P, d * 1.45).addScaledVector(V, -d * 1.05).addScaledVector(N, d * 0.55);
-    tmp2.copy(lander.position).addScaledVector(P, -d * 2.2).addScaledVector(V, d * 0.9);
-    camera.lookAt(tmp2);
-    orbitG.visible = false;
+    return K[K.length - 1][1];
+  }
+  // The lander's distance from the planet's centre and how far it has fallen
+  // behind the orbiter (radians along the orbit). The orbiter stays at the origin.
+  const sepDown = (tt) => (tt < RELEASE ? 0 : (tt - RELEASE) * 1.3);
+  const pullAhead = (tt) => 1.9 * Math.max(0, tt - 1.8) ** 2;
+  function landerAt(out, tt) {
+    const k = sat((tt - BURN) / (9 - BURN));
+    const r = (tt < BURN ? rOrbit : R + altAt(tt)) - dockGap - sepDown(tt);
+    const th = -pullAhead(tt) / rOrbit - (W_ORB * (9 - BURN) * k * k * k) / 3;
+    return out.copy(P).multiplyScalar(r * Math.cos(th) - rOrbit).addScaledVector(V, r * Math.sin(th));
+  }
+  function beatOf(tt) {
+    if (tt < RELEASE) return 'docked';
+    if (tt < 3.0) return 'separation';
+    if (tt < 3.9) return 'orbiter';
+    if (tt < 4.8) return 'deorbit';
+    if (landKind === 'legs') return 'powered';
+    if (tt < CHUTE) return 'entry';
+    if (landKind === 'mars') return tt < DROP ? 'chute' : 'retro';
+    return tt < INFLATE ? 'chute' : tt < 8.0 ? 'balloon' : 'float';
+  }
+  const dirMix = (out, a, b, k) => out.copy(a).multiplyScalar(1 - k).addScaledVector(b, k).normalize();
+
+  // Docked: the descent module sits under the bus and moves with it.
+  function placeDocked() {
+    if (!landKind) return;
+    tL.set(0, 0, -dockGap).applyQuaternion(craft.quaternion).add(craft.position);
+    tQ.copy(craft.quaternion).multiply(qDock);
+    hideRig();
+    if (shell) {
+      [shell.back, shell.shield].forEach((o) => {
+        o.visible = true;
+        o.position.copy(tL);
+        o.quaternion.copy(tQ);
+      });
+    } else {
+      lander.visible = true;
+      lander.position.copy(tL);
+      lander.quaternion.copy(tQ);
+    }
+  }
+  function hideRig() {
+    if (!landKind) return;
+    [lander, lFlame, shell && shell.back, shell && shell.shield, sFlame, chute, stat].forEach((o) => o && (o.visible = false));
+    if (entryGlow) entryGlow.material.opacity = 0;
+    orbDot.material.opacity = 0;
+    popGlow.material.opacity = 0;
+  }
+  // RCS puffs from four thrusters round the module, in fxG's frame (it rides with the lander).
+  function puff(at, up, n, speed) {
+    const ax = tA.set(1, 0, 0).applyQuaternion(tQ);
+    const az = tE.set(0, 0, 1).applyQuaternion(tQ);
+    for (let i = 0; i < n; i++) {
+      const a = (i % 4) * (TAU / 4) + TAU / 8 + (Math.random() - 0.5) * 0.3;
+      const rad = tmp.copy(ax).multiplyScalar(Math.cos(a)).addScaledVector(az, Math.sin(a));
+      const p = tmp2.copy(at).addScaledVector(rad, 0.9);
+      const v = rad.multiplyScalar(speed * (0.7 + Math.random() * 0.6)).addScaledVector(up, speed * 0.5 * Math.random());
+      puffs.emit(p, v, 0.55 + Math.random() * 0.3, 0xeaf6ff, 0x46566e);
+    }
+  }
+
+  function updateLanding(dt) {
+    const tt = clamp(state.landT, 0, LD + 3) * (LANDING_SECONDS / LD);
+    const first = prevTT < 0 || tt < prevTT - 0.5;
+    const crossed = (x) => !first && prevTT < x && tt >= x;
+    curTT = tt;
+    const capsule = landKind !== 'legs';
+    beam.visible = false;
+    station.material.opacity = 0;
     marker.visible = false;
+    shadow.visible = false;
+    craft.position.set(0, 0, 0);
+    craft.visible = true;
+    hideRig();
+
+    // ----- Where the lander is, and which way is up for it -----
+    landerAt(tL, tt);
+    // Inside the air the planet's haze shells would wash the ground out: the sky tint takes over.
+    const atmo = planet.userData.atmosphere;
+    if (atmo) atmo.forEach((m) => (m.visible = altAt(tt) > R * 0.014));
+    const up = tU.copy(P);
+    if (!capsule) {
+      // Turn so the engine points along the track, burn, then pitch up to land.
+      const retro = tA.copy(V).negate().addScaledVector(P, 0.3).normalize();
+      if (tt > 3.1) dirMix(up, P, retro, smooth(3.1, 3.55, tt) * (1 - smooth(4.8, 8.6, tt)));
+    } else {
+      // Backshell thrusters fire forward for the burn, then it flips heat shield first.
+      const burnUp = tA.copy(V).addScaledVector(P, 0.15).normalize();
+      const entryUp = tE.copy(V).negate().addScaledVector(P, 0.45).normalize();
+      if (tt > 3.1 && tt < 4.4) dirMix(up, P, burnUp, smooth(3.1, 3.5, tt));
+      else if (tt >= 4.4 && tt < CHUTE) dirMix(up, burnUp, entryUp, smooth(4.4, 4.9, tt));
+      else if (tt >= CHUTE) {
+        // Hanging under the parachute: it swings a little, then settles.
+        dirMix(up, entryUp, P, smooth(CHUTE, CHUTE + 0.45, tt));
+        const sw = tt - CHUTE;
+        if (!reduced) up.addScaledVector(V, 0.16 * Math.sin(sw * 5) * Math.exp(-sw * 1.3)).normalize();
+      }
+    }
+    tQ.setFromUnitVectors(Yax, up);
+    fxG.position.copy(tL);
+
+    // ----- Separation: springs and RCS puffs -----
+    if (crossed(RELEASE)) {
+      puff(tB.copy(up).multiplyScalar(capsule ? 1.4 : 1.2), up, 28, 3.2);
+      if (!reduced) shake.k = Math.max(shake.k, 0.25);
+    }
+    if (crossed(2.2) || crossed(3.15) || (capsule && (crossed(3.3) || crossed(4.5) || crossed(4.7)))) puff(tB.copy(up).multiplyScalar(1.1), up, 10, 2.2);
+    if (!reduced) {
+      popGlow.position.copy(tL).addScaledVector(up, capsule ? 1.8 : 1.7);
+      popGlow.material.opacity = smooth(RELEASE - 0.05, RELEASE + 0.05, tt) * (1 - smooth(RELEASE + 0.05, RELEASE + 0.45, tt)) * 0.8;
+    }
+
+    // ----- The modules -----
+    const rigTop = camT.copy(tL); // what the wide descent shots frame
+    if (!capsule) {
+      lander.visible = true;
+      lander.position.copy(tL);
+      lander.quaternion.copy(tQ);
+      const burnK = smooth(3.55, 3.8, tt) * (1 - smooth(4.5, 4.75, tt));
+      const descK = smooth(4.8, 5.1, tt);
+      const k = Math.max(burnK, descK);
+      lFlame.visible = k > 0.01;
+      if (lFlame.visible) setRocketPlume(lFlame, 7 + 8 * descK + Math.sin(clock * 17) * 0.4, 1.3 + 0.7 * descK, k, 1, clock);
+    } else {
+      // Backshell (and heat shield until it drops), with the backshell's own burn.
+      tB.copy(tL);
+      if (landKind === 'mars' && tt > DROP) {
+        // The lander falls out; backshell and parachute stay above it.
+        const s = tt - DROP;
+        tB.addScaledVector(P, 0.6 + 16 * s * s).addScaledVector(V, -3 * s);
+      }
+      if (landKind === 'venus' && tt > CUT) {
+        // The balloon holds the platform; chute and backshell let go and fall away.
+        const s = tt - CUT;
+        tB.addScaledVector(P, -26 * s * s).addScaledVector(N, 12 * s);
+      }
+      shell.back.visible = !(landKind === 'venus' && tt > CUT + 1.0);
+      shell.back.position.copy(tB);
+      shell.back.quaternion.copy(tQ);
+      shell.shield.visible = tt < SHIELD + 1.0;
+      shell.shield.quaternion.copy(tQ);
+      shell.shield.position.copy(tL);
+      if (tt > SHIELD) {
+        const s = tt - SHIELD;
+        shell.shield.position.addScaledVector(P, -(0.4 + 14 * s * s)).addScaledVector(V, 2 * s);
+        shell.shield.rotateX(s * 0.8);
+      }
+      const burnK = smooth(3.55, 3.8, tt) * (1 - smooth(4.25, 4.45, tt));
+      sFlame.visible = burnK > 0.01;
+      if (sFlame.visible) setRocketPlume(sFlame, 2.6 + Math.sin(clock * 17) * 0.2, 0.55, burnK, 1, clock);
+      // Entry: the heat shield glows and a plasma trail streams behind.
+      const glowK = smooth(4.85, 5.3, tt) * (1 - smooth(CHUTE - 0.55, CHUTE - 0.05, tt));
+      entryGlow.material.opacity = glowK * 0.8;
+      entryGlow.position.copy(tL).addScaledVector(up, -0.8);
+      entryGlow.scale.setScalar(5.2 + (reduced ? 0 : 0.6 * Math.sin(clock * 9)));
+      if (glowK > 0.05) {
+        const n = Math.ceil(dt * 420 * glowK);
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * TAU;
+          const ax = tA.set(Math.cos(a), 0, Math.sin(a)).applyQuaternion(tQ);
+          trail.emit(
+            tmp2.copy(ax).multiplyScalar(1.7).addScaledVector(up, -0.2),
+            tmp.copy(up).multiplyScalar(30 + Math.random() * 26).addScaledVector(ax, 1.5 + Math.random() * 2.5),
+            0.28 + Math.random() * 0.2,
+            0xffe0a0,
+            0x9a2a10
+          );
+        }
+      }
+      // Parachute: out of the backshell's top, opening fast.
+      if (tt > CHUTE && !(landKind === 'venus' && tt > CUT + 1.0)) {
+        chute.visible = true;
+        chute.position.copy(tB).addScaledVector(up, shell.top);
+        chute.quaternion.copy(tQ);
+        const open = 0.12 + 0.88 * smooth(CHUTE, CHUTE + 0.35, tt);
+        chute.scale.set(open, 0.6 + 0.4 * open, open);
+      }
+      if (landKind === 'mars' && tt > SHIELD) {
+        // The lander in the open backshell, then on its own retro-rockets.
+        lander.visible = true;
+        lander.quaternion.copy(tQ);
+        lander.position.copy(tL).addScaledVector(up, 0.2);
+        const k = smooth(DROP + 0.05, DROP + 0.3, tt);
+        lFlame.visible = k > 0.01;
+        if (lFlame.visible) setRocketPlume(lFlame, 9 + Math.sin(clock * 17) * 0.5, 1.6, k, 1, clock);
+      }
+      if (landKind === 'venus' && tt > SHIELD) {
+        // The platform drops out on its tether and the balloon fills above it.
+        stat.visible = true;
+        const lower = 17.5 * smooth(INFLATE - 0.1, INFLATE + 0.6, tt);
+        stat.quaternion.setFromUnitVectors(Yax, P);
+        stat.position.copy(tL).addScaledVector(P, -0.6 - lower);
+        if (tt > CUT && !reduced) stat.position.addScaledVector(P, 0.4 * Math.sin(clock * 1.3));
+        const fill = 0.1 + 0.9 * smooth(INFLATE + 0.1, 7.9, tt);
+        stat.userData.envelope.scale.set(fill, fill, fill);
+        stat.userData.envelope.position.y = 16.2 - 5.0 * fill;
+        stat.userData.lines.scale.y = Math.max(0.05, (16.2 - 10 * fill) / 6.2);
+        if (tt > INFLATE) rigTop.copy(stat.position).addScaledVector(P, 9);
+      }
+      // The cloud deck: soft billows streaming up past the module.
+      if (clouds && tt > 6.4) {
+        const n = Math.ceil(dt * 40 * (reduced ? 0.5 : 1));
+        for (let i = 0; i < n; i++) {
+          const p = tmp2.copy(V).multiplyScalar((Math.random() - 0.5) * 160).addScaledVector(N, (Math.random() - 0.5) * 160).addScaledVector(P, -40 - Math.random() * 90);
+          clouds.emit(p, tmp.copy(P).multiplyScalar(tt < 8 ? 26 : 5).addScaledVector(V, -4), 3.2, 0x8a7046, 0x2a1c0c);
+        }
+      }
+    }
+
+    // ----- Near the ground the engine blows dust (ice on Europa) outwards -----
+    const hNow = altAt(tt);
+    if (landKind !== 'venus' && hNow < 70 && tt < 9.6) {
+      const k = 1 - hNow / 70;
+      const n = Math.ceil(dt * 320 * k * (reduced ? 0.5 : 1));
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * TAU;
+        const dir = tA.copy(V).multiplyScalar(Math.cos(a)).addScaledVector(N, Math.sin(a));
+        const p = tmp2.copy(P).multiplyScalar(-hNow + 0.6).addScaledVector(dir, 2 + Math.random() * 4);
+        dust.emit(p, tmp.copy(dir).multiplyScalar(18 + Math.random() * 26).addScaledVector(P, 1 + Math.random() * 4), 0.9 + Math.random() * 0.6, DUST_C[0], DUST_C[1]);
+      }
+    }
+
+    // ----- The orbiter carries on: the dot and its orbit -----
+    orbDot.position.set(0, 0, 0);
+    orbDot.material.opacity = smooth(3.4, 4.1, tt) * 0.95;
+    earthDot.visible = false; // one dot in this sky: the orbiter
+    orbitG.visible = tt > 3.0 && tt < 4.8;
+
+    // ----- Low in the air the sky is no longer black; Venus sinks into the cloud layer -----
+    const airK = landKind === 'mars' ? smooth(CHUTE - 0.4, CHUTE + 0.6, tt) : landKind === 'venus' ? smooth(CHUTE - 0.4, INFLATE, tt) : 0;
+    scene.background.setHex(0x02030a).lerp(skyC.setHex(landKind === 'venus' ? 0xc99a62 : 0xb08560), airK);
+    // Seen from a few km up, the global map washes out to grey: warm the Martian ground.
+    if (landKind === 'mars' && surfMat) surfMat.color.setHex(0xffffff).lerp(skyC.setHex(0xffa070), airK);
+    stars.material.opacity = 1 - airK;
+    haze = landKind === 'venus' ? smooth(6.6, 8.4, tt) * 0.48 : 0;
+    const post = getPost();
+    if (post && post.set) post.set({ fade: Math.max(viewFade, haze), fadeColor: landKind === 'venus' ? HAZE_C : 0 });
+
+    // ----- Camera -----
+    const fk = aspect < 1 ? 1.25 / aspect : fit(); // portrait: a little closer than the orbit shots
+    const narrow = Math.min(1, aspect); // portrait phones: keep the craft near the middle
+    camera.up.copy(P);
+    const beat = beatOf(tt);
+    if (tt < 3.0) {
+      // The stack, then the push: both craft in the frame, the lander dropping away.
+      const d = (size * 1.0 + dockGap) * fk;
+      const drift = reduced ? 0 : tt * 0.04;
+      tA.copy(tL).multiplyScalar(0.5);
+      camera.position.copy(tA).addScaledVector(V, d * (0.9 - drift)).addScaledVector(N, d * (1.1 + drift)).addScaledVector(P, d * 0.22);
+      camera.lookAt(tA);
+    } else if (tt < 4.8) {
+      // From behind the lander, past it, at the orbiter going on along its orbit.
+      // Looking up the line from the lander to the orbiter, a little to the side:
+      // the lander on one side of the frame, the orbiter shrinking on the other.
+      const dl = 10 * fk;
+      tE.copy(tL).negate().normalize();
+      camera.position.copy(tL).addScaledVector(tE, -dl * 1.3).addScaledVector(N, dl * 0.6 * narrow).addScaledVector(P, -dl * 0.12);
+      tA.copy(tL).addScaledVector(tE, dl * 1.2);
+      camera.lookAt(tA);
+    } else if ((landKind === 'legs' && tt > 6.2) || beat === 'retro') {
+      // Low now: from the side, the horizon in the frame and the ground coming up;
+      // at the end the camera backs off to show the dust blowing out under the engine.
+      const k = reduced ? 1 : smooth(7.9, 8.9, tt);
+      const dl = (14 + 8 * k) * fk * (landKind === 'mars' ? 0.8 : 1);
+      const hh = Math.min(hNow, 40);
+      camera.position.copy(tL).addScaledVector(V, -dl * 0.95).addScaledVector(N, dl * 0.75).addScaledVector(P, 3 + (5 - hh - 3) * k);
+      tA.copy(tL).addScaledVector(V, dl * 0.1).addScaledVector(P, -2 - (hh * 0.5 - 2) * k);
+      camera.lookAt(tA);
+    } else if (beat === 'chute' || beat === 'balloon' || beat === 'float') {
+      // Wide enough for the canopy (and Venus's balloon) above the module.
+      const venusUp = landKind === 'venus' && tt > INFLATE;
+      const dl = (venusUp ? 30 : 20) * fk;
+      tA.copy(rigTop).addScaledVector(P, venusUp ? 0 : 6);
+      camera.position.copy(tA).addScaledVector(V, -dl * 1.05).addScaledVector(N, dl * 0.85).addScaledVector(P, dl * 0.12);
+      camera.lookAt(tA);
+    } else {
+      // Above and behind, looking down past the lander at the ground coming up.
+      const dl = 9.5 * fk;
+      camera.position.copy(tL).addScaledVector(P, dl * 1.2).addScaledVector(V, -dl * 1.35).addScaledVector(N, dl * 0.6 * narrow);
+      tA.copy(tL).addScaledVector(P, -dl * 1.4 * narrow).addScaledVector(V, dl * 1.1 * narrow);
+      camera.lookAt(tA);
+    }
+    if (shake.k > 0.001) {
+      const s = shake.k * CALM_SHAKE * 0.6;
+      camera.position.x += (Math.random() - 0.5) * s;
+      camera.position.y += (Math.random() - 0.5) * s;
+      camera.position.z += (Math.random() - 0.5) * s;
+      shake.k *= Math.exp(-dt * 4);
+    }
+    puffs.update(dt, 1.2);
+    trail.update(dt);
+    dust.update(dt, 0.6);
+    if (clouds) clouds.update(dt, 0.3);
+    prevTT = tt;
   }
 
   // ---------- Launch film ----------
@@ -857,20 +1358,48 @@ export function createFlight(opts) {
       if (post && post.impact) post.impact(k * 0.5);
     },
     fadeTo(k) {
+      viewFade = k;
       const post = getPost();
-      if (post && post.set) post.set({ fade: k });
+      if (post && post.set) post.set({ fade: Math.max(k, haze), fadeColor: landKind === 'venus' && state.mode === 'landing' ? HAZE_C : 0 });
+    },
+    // The separation and descent film (docs/TEAM-V3.md "Separation and descent").
+    landingSeconds: LD,
+    landKind,
+    // Which beat is on screen: docked, separation, orbiter, deorbit, powered,
+    // entry, chute, retro, balloon or float (null outside the film).
+    landBeat() {
+      return landKind && state.mode === 'landing' ? beatOf(curTT) : null;
+    },
+    // Where the orbiter and the lander are on screen (-1..1, y up), for the view's labels.
+    landTags() {
+      if (!landKind || state.mode !== 'landing') return null;
+      // Anchored just right of each craft (on screen), so the label never covers it.
+      const right = v3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const at = (p, r) => {
+        p.addScaledVector(right, r * Math.min(1, p.distanceTo(camera.position) / Math.max(1e-6, r * 4)));
+        const behind = tmp.copy(p).applyMatrix4(camera.matrixWorldInverse).z > 0;
+        tmp.copy(p).project(camera);
+        return { x: tmp.x, y: tmp.y, on: !behind && Math.abs(tmp.x) < 0.96 && Math.abs(tmp.y) < 0.92 };
+      };
+      return { t: curTT, orbiter: at(v3(0, 0, 0), size * 0.45), lander: at(v3().copy(tL), 2.2) };
     },
     update(dt0) {
       const dt = Math.max(0, dt0 || 0); // the first frame can start before the mount's timestamp
       clock += dt;
       if (state.mode === 'launch') {
+        hideRig();
         updateLaunch(dt);
         return;
       }
+      const landing = state.mode === 'landing' && !!landKind;
+      if (!landing && planet.userData.atmosphere) planet.userData.atmosphere.forEach((m) => (m.visible = true));
+      if (!landing && surfMat) surfMat.color.setHex(0xffffff);
+      if (!landing) earthDot.visible = deep && body !== 'earth';
+      landPhase = landing ? LAND_A0 + W_ORB * clamp(state.landT, 0, LD + 3) * (LANDING_SECONDS / LD) : null;
       startOrbit();
       pose();
       lightCraft(dt);
-      if (state.mode === 'landing') {
+      if (landing) {
         updateLanding(dt);
       } else {
         direct(dt);
@@ -881,6 +1410,7 @@ export function createFlight(opts) {
       }
       pointArrays(dt);
       updateEnd(dt);
+      if (!landing) placeDocked();
       if (state.spill > 0 && !state.end) {
         const n = Math.ceil(state.spill * 2.2);
         for (let i = 0; i < n; i++) {

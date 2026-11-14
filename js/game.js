@@ -244,11 +244,13 @@
   // reducedMotion: true/false (reads back the effective value; set 'auto' to
   // follow the system again); the character controller's camera: lookSpeed
   // (0.5..2.5, 1 = normal), invertY, autoCamera (follows behind you, default on);
-  // music (on/off) and musicVolume (0..1) for js/team/music.js.
+  // music (on/off) and musicVolume (0..1) for js/team/music.js; realGravity (the surface
+  // moves with each world's real gravity, default on; off = Earth-like everywhere,
+  // docs/GRAVITY.md) and lookSmooth (smoothed mouse look, default off).
   // Changes emit bus 'settings'.
   const SKEY = 'ek-settings';
   const RM_QUERY = '(prefers-reduced-motion: reduce)';
-  let prefs = { quality: 'auto', motion: 'auto', lookSpeed: 1, invertY: false, autoCamera: true, music: true, musicVolume: 0.5 };
+  let prefs = { quality: 'auto', motion: 'auto', lookSpeed: 1, invertY: false, autoCamera: true, music: true, musicVolume: 0.5, realGravity: true, lookSmooth: false };
   try {
     const saved = JSON.parse(store.get(SKEY) || '{}');
     if (['auto', 'high', 'low'].includes(saved.quality)) prefs.quality = saved.quality;
@@ -256,6 +258,8 @@
     if (Number(saved.lookSpeed) >= 0.3 && Number(saved.lookSpeed) <= 3) prefs.lookSpeed = Number(saved.lookSpeed);
     if (typeof saved.invertY === 'boolean') prefs.invertY = saved.invertY;
     if (typeof saved.autoCamera === 'boolean') prefs.autoCamera = saved.autoCamera;
+    if (typeof saved.realGravity === 'boolean') prefs.realGravity = saved.realGravity;
+    if (typeof saved.lookSmooth === 'boolean') prefs.lookSmooth = saved.lookSmooth;
     if (typeof saved.music === 'boolean') prefs.music = saved.music;
     if (Number(saved.musicVolume) >= 0 && Number(saved.musicVolume) <= 1) prefs.musicVolume = Number(saved.musicVolume);
   } catch (e) {}
@@ -390,6 +394,24 @@
       prefs.autoCamera = !!v;
       saveSettings();
       changed('autoCamera');
+    },
+    // Moving on the surface with the world's real gravity (on) or Earth's (off).
+    get realGravity() {
+      return prefs.realGravity !== false;
+    },
+    set realGravity(v) {
+      prefs.realGravity = !!v;
+      saveSettings();
+      changed('realGravity');
+    },
+    // Smoothed mouse look (a few milliseconds of easing on the camera).
+    get lookSmooth() {
+      return !!prefs.lookSmooth;
+    },
+    set lookSmooth(v) {
+      prefs.lookSmooth = !!v;
+      saveSettings();
+      changed('lookSmooth');
     },
     // The calm soundtrack (js/team/music.js): on/off and its own volume.
     get music() {
