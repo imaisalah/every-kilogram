@@ -17,6 +17,7 @@ What was added to the prototype, what was tested, and what was not done.
 
 ## Not done, and why
 - **GMAT validation status is recorded in `docs/VALIDATION.md`.** It is a focused two-body Earth-orbit period cross-check, not full-mission verification or game integration.
+- **DONKI, checked on 14 Nov 2026:** `https://api.nasa.gov/DONKI/FLR` answered **404** (NASA's side). The lookup now tries the CCMC web service (`kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/FLR`) first and api.nasa.gov second, and caches a failure for 6 hours so a broken service isn't asked on every flight. The CCMC route could not be reached from the build machine (TLS), so it still needs a check in a normal browser.
 - **The live DONKI lookup was not tested against NASA's server** (no network access to it from where this was built). It is tested with simulated responses and failures. NASA's `DEMO_KEY` is rate limited; register a free key at https://api.nasa.gov if you want it dependable, and pass it in `liveRecentFlare({ apiKey })`.
 - **JPL Horizons** (launch windows) is not used. Real launch windows would change the build screens and balance, which is too risky to do untested.
 - **A CubeSat mode, WebXR/VR and Worldview imagery** were not built. The Nile and storm missions still use the images already in `assets/discoveries/`.

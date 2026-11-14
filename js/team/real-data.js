@@ -99,29 +99,41 @@
     }
     return best;
   }
+  // NASA's DONKI flare list. The api.nasa.gov route answered 404 in November 2026,
+  // so the CCMC web service it proxies is tried first. Every failure is cached
+  // like a success, so a broken service is asked at most once every 6 hours.
+  function donkiUrls(start, end, key) {
+    return [
+      `https://kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get/FLR?startDate=${start}&endDate=${end}`,
+      `https://api.nasa.gov/DONKI/FLR?startDate=${start}&endDate=${end}&api_key=${encodeURIComponent(key || 'DEMO_KEY')}`,
+    ];
+  }
   async function liveRecentFlare(opts) {
     const o = opts || {};
     const cached = readCache();
     if (cached) return cached.value;
     if (typeof fetch !== 'function') return null;
     const now = Date.now();
-    const url = `https://api.nasa.gov/DONKI/FLR?startDate=${ymd(now - 30 * DAY)}&endDate=${ymd(now)}&api_key=${encodeURIComponent(o.apiKey || 'DEMO_KEY')}`;
-    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-    const timer = ctl ? setTimeout(() => ctl.abort(), o.timeoutMs || 4000) : null;
-    try {
-      const res = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
-      if (!res.ok) return null;
-      const best = pickStrongest(await res.json());
-      const value = best ? { classType: best.classType, peakTime: best.peakTime || best.beginTime, flrID: best.flrID, link: best.link || DONKI_TOOL } : null;
-      writeCache(value);
-      return value;
-    } catch (e) {
-      return null;
-    } finally {
-      if (timer) clearTimeout(timer);
+    for (const url of donkiUrls(ymd(now - 30 * DAY), ymd(now), o.apiKey)) {
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), o.timeoutMs || 4000) : null;
+      try {
+        const res = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
+        if (!res.ok) continue;
+        const best = pickStrongest(await res.json());
+        const value = best ? { classType: best.classType, peakTime: best.peakTime || best.beginTime, flrID: best.flrID, link: best.link || DONKI_TOOL } : null;
+        writeCache(value);
+        return value;
+      } catch (e) {
+        // try the next route
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     }
+    writeCache(null); // no live data now: the saved real events are used, and we don't ask again for 6 h
+    return null;
   }
 
-  SMD.team.realData = { SPACE_WEATHER, DONKI_TOOL, spaceWeatherFor, liveRecentFlare, pickStrongest, flareRank };
+  SMD.team.realData = { SPACE_WEATHER, DONKI_TOOL, spaceWeatherFor, liveRecentFlare, pickStrongest, flareRank, donkiUrls };
   if (typeof module !== 'undefined' && module.exports) module.exports = SMD.team.realData;
 })();
