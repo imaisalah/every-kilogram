@@ -1141,9 +1141,9 @@ export async function createCabin(opts = {}) {
     });
     hide.forEach((o) => (o.visible = false));
   }
-  // KILO floats by the forward panel, facing the crew.
-  const kilo = makeKilo({ reduced, lamp: 0.25 });
-  const kiloHome = v3(-0.5, 1.78, 0.95);
+  // The chosen guide (KILO unless the player picked another) floats by the forward panel, facing the crew.
+  const kilo = makeGuide3D({ reduced, lamp: 0.25, guide: opts.guide });
+  const kiloHome = v3(-0.5, kilo.group.name === 'brace' ? 1.66 : 1.78, 0.95);
   kilo.group.position.copy(kiloHome);
   kilo.group.rotation.y = Math.PI - 0.35;
   cap.group.add(kilo.group);
@@ -1228,6 +1228,506 @@ export async function createCabin(opts = {}) {
       try {
         cap.dispose();
       } catch (e) {}
+    },
+  };
+}
+
+// ---------- v3: the chosen guide in 3D (docs/TEAM-V3.md item 9) ----------
+// makeGuide3D(opts) gives the same handle as makeKilo ({ group, setMood,
+// setTalking, update, dispose }) for the guide the player chose (opts.guide or
+// SMD.team.guide.current()): KILO, BRACE (a tall graphite survey robot),
+// Dr. Praline (a floating holo-portrait card) or CAIRN (three stacked stones
+// with a glowing geode face).
+export function makeGuide3D(opts = {}) {
+  const SMD = globalThis.SMD || {};
+  const G = SMD.team && SMD.team.guide;
+  const id = opts.guide || (G && G.current ? G.current() : 'kilo');
+  try {
+    if (id === 'brace') return makeBrace(opts);
+    if (id === 'praline') return makePraline(opts);
+    if (id === 'cairn') return makeCairn(opts);
+  } catch (e) {
+    console.warn('guide 3D fell back to KILO', e);
+  }
+  return makeKilo(opts);
+}
+
+// Arm angles in radians: [left shoulder, left elbow, right shoulder, right elbow], + is outward.
+const BRACE_ARMS3 = { neutral: [0.12, 0, 0.12, 0], deadpan: [0.07, 0, 0.07, 0], happy: [0.45, 0.28, 0.45, 0.28], proud: [0.12, 0, 2.62, 2.03], thinking: [0.12, 0, 0.26, -2.27], worried: [0.25, -0.7, 0.25, -0.7], sad: [0.03, 0, 0.03, 0], surprised: [1.08, 0.7, 1.08, 0.7], wink: [0.12, 0, 1.25, 0.8] };
+function makeBrace(opts = {}) {
+  const SMD = globalThis.SMD || {};
+  const guide = SMD.team && SMD.team.guide;
+  const group = new THREE.Group();
+  group.name = 'brace';
+  const bodyG = new THREE.Group();
+  group.add(bodyG);
+  const H = 0.62;
+  const graphite = new THREE.MeshStandardMaterial({ color: 0x2f3540, roughness: 0.55, metalness: 0.45 });
+  const joint = new THREE.MeshStandardMaterial({ color: 0x68728a, roughness: 0.4, metalness: 0.6 });
+  const amber = new THREE.MeshBasicMaterial({ color: 0xffb24d, toneMapped: false });
+  // A tapered square prism, flattened front to back.
+  const geo = new THREE.CylinderGeometry(0.125, 0.148, H, 4, 1);
+  geo.rotateY(Math.PI / 4);
+  geo.scale(1, 1, 0.62);
+  const body = new THREE.Mesh(geo, graphite);
+  bodyG.add(body);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.02, 0.105), graphite);
+  cap.position.y = H / 2 + 0.006;
+  bodyG.add(cap);
+  // The face panel: eye and light column, drawn on a canvas.
+  const fc = document.createElement('canvas');
+  fc.width = 120;
+  fc.height = 256;
+  const fctx = fc.getContext('2d');
+  const faceTex = new THREE.CanvasTexture(fc);
+  faceTex.colorSpace = THREE.SRGBColorSpace;
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.28), new THREE.MeshBasicMaterial({ map: faceTex, toneMapped: false }));
+  face.position.set(0, H * 0.13, 0.0905);
+  face.rotation.x = -0.03;
+  bodyG.add(face);
+  // Two rank chevrons below the face.
+  [0, 1].forEach((i) => {
+    [-1, 1].forEach((s) => {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.008, 0.004), amber);
+      bar.position.set(s * 0.021, -H * 0.3 - i * 0.022, 0.093);
+      bar.rotation.z = s * -0.5;
+      bodyG.add(bar);
+    });
+  });
+  // Arms: shoulder pivot, upper arm, elbow, forearm, an amber hand.
+  const arms = [-1, 1].map((side) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.135, H * 0.28, 0);
+    bodyG.add(pivot);
+    pivot.add(new THREE.Mesh(new THREE.SphereGeometry(0.016, 12, 8), joint));
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.13, 8), graphite);
+    upper.position.y = -0.065;
+    pivot.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.13;
+    pivot.add(elbow);
+    elbow.add(new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 8), joint));
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.12, 8), graphite);
+    fore.position.y = -0.06;
+    elbow.add(fore);
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.022, 0.02), amber);
+    hand.position.y = -0.125;
+    elbow.add(hand);
+    return { side, pivot, elbow, a1: 0, a2: 0 };
+  });
+  // The hover pad and its glow.
+  const pad = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.025, 0.1), new THREE.MeshStandardMaterial({ color: 0x1a1e26, roughness: 0.6, metalness: 0.3 }));
+  pad.position.y = -H / 2 - 0.035;
+  bodyG.add(pad);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDot(), color: new THREE.Color(0xffb24d), transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.scale.set(0.4, 0.14, 1);
+  glow.position.y = -H / 2 - 0.09;
+  group.add(glow);
+  const lamp = new THREE.PointLight(0xffb24d, opts.lamp == null ? 0.3 : opts.lamp, 1.2, 2);
+  lamp.position.set(0, 0.05, 0.25);
+  group.add(lamp);
+
+  let mood = 'neutral';
+  let talking = false;
+  let open = false;
+  let tTalk = 0;
+  let clock = Math.random() * 10;
+  let dirty = true;
+  function redraw() {
+    if (guide && guide.drawBraceFace) guide.drawBraceFace(fctx, mood, fc.width, fc.height, talking && open);
+    faceTex.needsUpdate = true;
+    dirty = false;
+  }
+  redraw();
+  return {
+    group,
+    setMood(m) {
+      if (m !== mood) {
+        mood = m || 'neutral';
+        dirty = true;
+      }
+    },
+    setTalking(on) {
+      if (!!on !== talking) {
+        talking = !!on;
+        open = false;
+        dirty = true;
+      }
+    },
+    update(dt) {
+      clock += dt;
+      const still = !!opts.reduced;
+      bodyG.position.y = still ? 0 : Math.sin(clock * 1.1) * 0.012;
+      bodyG.rotation.y = still ? 0 : Math.sin(clock * 0.4) * 0.06;
+      glow.material.opacity = 0.42 + 0.06 * Math.sin(clock * 1.1);
+      const A = BRACE_ARMS3[mood] || BRACE_ARMS3.neutral;
+      const k = 1 - Math.exp(-dt * 6);
+      arms.forEach((a, i) => {
+        a.a1 += (A[i * 2] - a.a1) * k;
+        a.a2 += (A[i * 2 + 1] - a.a2) * k;
+        a.pivot.rotation.z = -a.side * a.a1;
+        a.elbow.rotation.z = -a.side * a.a2;
+      });
+      if (talking) {
+        tTalk += dt;
+        if (tTalk > 0.12) {
+          tTalk = 0;
+          open = !open;
+          dirty = true;
+        }
+      }
+      if (dirty) redraw();
+    },
+    dispose() {
+      faceTex.dispose();
+    },
+  };
+}
+
+function makePraline(opts = {}) {
+  const SMD = globalThis.SMD || {};
+  const guide = SMD.team && SMD.team.guide;
+  const group = new THREE.Group();
+  group.name = 'praline';
+  const card = new THREE.Group();
+  group.add(card);
+  const W = 0.44;
+  const Hc = W * 0.8;
+  const c = document.createElement('canvas');
+  c.width = 350;
+  c.height = 280;
+  const cx = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(W, Hc), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, side: THREE.DoubleSide, depthWrite: false }));
+  card.add(plane);
+  // A thin honey-gold ring behind the portrait and a rock-sugar crystal circling it.
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(Hc * 0.47, 0.006, 8, 64), new THREE.MeshBasicMaterial({ color: 0xe8a93a, transparent: true, opacity: 0.7, toneMapped: false }));
+  ring.position.set(0, -0.004, -0.004);
+  card.add(ring);
+  const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.022, 0), new THREE.MeshStandardMaterial({ color: 0xb48cff, emissive: 0x5a3c9a, emissiveIntensity: 0.6, roughness: 0.2, metalness: 0.1 }));
+  group.add(crystal);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDot(), color: new THREE.Color(0xe8a93a), transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.scale.set(0.5, 0.16, 1);
+  glow.position.y = -Hc / 2 - 0.05;
+  group.add(glow);
+  const lamp = new THREE.PointLight(0xffd9a0, opts.lamp == null ? 0.3 : opts.lamp, 1.2, 2);
+  lamp.position.set(0, 0, 0.25);
+  group.add(lamp);
+
+  // Portraits are SVG: drawn to the canvas through an <img>, cached per look.
+  const cache = {};
+  let want = '';
+  function paint(img) {
+    cx.clearRect(0, 0, c.width, c.height);
+    cx.drawImage(img, 0, 0, c.width, c.height);
+    tex.needsUpdate = true;
+  }
+  function show(key, mood, talk) {
+    want = key;
+    const hit = cache[key];
+    if (hit && hit.complete && hit.naturalWidth) return paint(hit);
+    if (hit) return;
+    if (!guide || !guide.portrait) return;
+    const svg = guide.portrait(mood, { size: 350, talking: talk, guide: 'praline' }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+    const img = new Image();
+    img.onload = () => {
+      if (want === key) paint(img);
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    cache[key] = img;
+  }
+  let mood = 'neutral';
+  let talking = false;
+  let open = false;
+  let tTalk = 0;
+  let clock = Math.random() * 10;
+  const refresh = () => show(`${mood}|${talking && open ? 1 : 0}`, mood, talking && open);
+  refresh();
+  return {
+    group,
+    setMood(m) {
+      if (m !== mood) {
+        mood = m || 'neutral';
+        refresh();
+      }
+    },
+    setTalking(on) {
+      if (!!on !== talking) {
+        talking = !!on;
+        open = false;
+        refresh();
+      }
+    },
+    update(dt) {
+      clock += dt;
+      const still = !!opts.reduced;
+      card.position.y = still ? 0 : Math.sin(clock * 1.2) * 0.014;
+      card.rotation.y = still ? 0 : Math.sin(clock * 0.5) * 0.08;
+      const a = clock * 0.9;
+      crystal.position.set(Math.cos(a) * W * 0.58, Hc * 0.18 + Math.sin(a * 1.3) * 0.03, Math.sin(a) * 0.08);
+      crystal.rotation.y += dt * 1.4;
+      if (talking) {
+        tTalk += dt;
+        if (tTalk > 0.15) {
+          tTalk = 0;
+          open = !open;
+          refresh();
+        }
+      }
+    },
+    dispose() {
+      tex.dispose();
+    },
+  };
+}
+
+const CAIRN_GLOW3 = { neutral: 0x7fe8d8, deadpan: 0x7fe8d8, happy: 0xffd27a, proud: 0xffd27a, wink: 0xffd27a, thinking: 0x9fb8ff, worried: 0x8fa0d8, sad: 0x8196c8, surprised: 0xb6f3ff };
+// Hand offsets from the middle stone [lx, ly, rx, ry] in metres.
+const CAIRN_HANDS3 = { neutral: [-0.2, -0.04, 0.2, -0.04], deadpan: [-0.19, -0.06, 0.19, -0.06], happy: [-0.23, 0.08, 0.23, 0.08], proud: [-0.2, -0.04, 0.21, 0.17], thinking: [-0.2, -0.05, 0.11, -0.04], worried: [-0.07, -0.13, 0.07, -0.13], sad: [-0.17, -0.13, 0.17, -0.13], surprised: [-0.25, 0.14, 0.25, 0.14], wink: [-0.2, -0.04, 0.23, 0.13] };
+function makeCairn(opts = {}) {
+  const SMD = globalThis.SMD || {};
+  const guide = SMD.team && SMD.team.guide;
+  const group = new THREE.Group();
+  group.name = 'cairn';
+  const bodyG = new THREE.Group();
+  group.add(bodyG);
+  bodyG.scale.setScalar(0.72); // about KILO's size in the cabin
+  const rock = new THREE.MeshStandardMaterial({ color: 0x6a635e, roughness: 0.92, metalness: 0.02, flatShading: true });
+  const stone = (r, sx, sy, sz, y) => {
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), rock);
+    m.scale.set(sx, sy, sz);
+    m.position.y = y;
+    bodyG.add(m);
+    return m;
+  };
+  stone(0.15, 1.2, 0.55, 1, -0.2);
+  const mid = stone(0.15, 1.05, 0.9, 0.8, 0);
+  stone(0.08, 1.1, 0.7, 0.95, 0.17);
+  // The geode face: a dark disc with the crystal eyes and mouth drawn on it.
+  const fc = document.createElement('canvas');
+  fc.width = 200;
+  fc.height = 170;
+  const fctx = fc.getContext('2d');
+  const faceTex = new THREE.CanvasTexture(fc);
+  faceTex.colorSpace = THREE.SRGBColorSpace;
+  const face = new THREE.Mesh(new THREE.CircleGeometry(0.1, 32), new THREE.MeshBasicMaterial({ map: faceTex, transparent: true, toneMapped: false }));
+  face.scale.set(1, 0.85, 1);
+  face.position.set(0, 0, 0.122);
+  bodyG.add(face);
+  // Crystals around the opening.
+  const crystalMat = new THREE.MeshStandardMaterial({ color: 0x7fe8d8, emissive: 0x2f8f86, emissiveIntensity: 0.8, roughness: 0.2 });
+  [[-0.095, 0.06], [0.095, 0.06], [-0.09, -0.065], [0.09, -0.065]].forEach(([x, y]) => {
+    const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.015, 0), crystalMat);
+    c.position.set(x, y, 0.1);
+    c.scale.set(0.7, 1.3, 0.7);
+    bodyG.add(c);
+  });
+  // Pebble hands; the right one carries a small spanner.
+  const hands = [-1, 1].map(() => {
+    const h = new THREE.Mesh(new THREE.IcosahedronGeometry(0.035, 1), rock);
+    h.scale.set(1, 0.85, 0.9);
+    bodyG.add(h);
+    return h;
+  });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xc9ced8, roughness: 0.35, metalness: 0.8 });
+  const spanner = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.08, 0.008), metal);
+  shaft.position.y = 0.05;
+  const head = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.005, 6, 12, Math.PI * 1.5), metal);
+  head.position.y = 0.095;
+  spanner.add(shaft, head);
+  spanner.rotation.z = -0.6;
+  hands[1].add(spanner);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: softDot(), color: new THREE.Color(0x7fe8d8), transparent: true, opacity: 0.4, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.scale.set(0.45, 0.14, 1);
+  glow.position.y = -0.3;
+  group.add(glow);
+  const lamp = new THREE.PointLight(0x7fe8d8, opts.lamp == null ? 0.3 : opts.lamp, 1.2, 2);
+  lamp.position.set(0, 0, 0.25);
+  group.add(lamp);
+
+  let mood = 'neutral';
+  let talking = false;
+  let open = false;
+  let tTalk = 0;
+  let clock = Math.random() * 10;
+  let dirty = true;
+  const handPos = [new THREE.Vector3(-0.2, -0.04, 0.03), new THREE.Vector3(0.2, -0.04, 0.03)];
+  function redraw() {
+    if (guide && guide.drawCairnFace) guide.drawCairnFace(fctx, mood, fc.width, fc.height, talking && open);
+    faceTex.needsUpdate = true;
+    const col = CAIRN_GLOW3[mood] || CAIRN_GLOW3.neutral;
+    crystalMat.color.setHex(col);
+    crystalMat.emissive.setHex(col).multiplyScalar(0.45);
+    glow.material.color.setHex(col);
+    lamp.color.setHex(col);
+    dirty = false;
+  }
+  redraw();
+  void mid;
+  return {
+    group,
+    setMood(m) {
+      if (m !== mood) {
+        mood = m || 'neutral';
+        dirty = true;
+      }
+    },
+    setTalking(on) {
+      if (!!on !== talking) {
+        talking = !!on;
+        open = false;
+        dirty = true;
+      }
+    },
+    update(dt) {
+      clock += dt;
+      const still = !!opts.reduced;
+      bodyG.position.y = still ? 0 : Math.sin(clock * 1.2) * 0.012;
+      bodyG.rotation.y = still ? 0 : Math.sin(clock * 0.45) * 0.08;
+      const H = CAIRN_HANDS3[mood] || CAIRN_HANDS3.neutral;
+      const k = 1 - Math.exp(-dt * 6);
+      hands.forEach((h, i) => {
+        handPos[i].x += (H[i * 2] - handPos[i].x) * k;
+        handPos[i].y += (H[i * 2 + 1] - handPos[i].y) * k;
+        h.position.set(handPos[i].x, handPos[i].y + (still ? 0 : Math.sin(clock * 1.6 + i) * 0.008), 0.03);
+      });
+      if (talking) {
+        tTalk += dt;
+        if (tTalk > 0.14) {
+          tTalk = 0;
+          open = !open;
+          dirty = true;
+        }
+      }
+      if (dirty) redraw();
+    },
+    dispose() {
+      faceTex.dispose();
+    },
+  };
+}
+
+// ---------- v3: View in VR (docs/TEAM-V3.md item 16) ----------
+// Only offered when the browser says a headset can start an immersive-vr session.
+export async function vrSupported(nav) {
+  try {
+    const xr = (nav || globalThis.navigator || {}).xr;
+    if (!xr || typeof xr.isSessionSupported !== 'function') return false;
+    return !!(await xr.isSessionSupported('immersive-vr'));
+  } catch (e) {
+    return false;
+  }
+}
+
+// The flight scene in the headset. A second renderer (WebXR, three r160's own
+// WebXRManager) draws the same scene from a still viewpoint a few metres from
+// the spacecraft, so only your head moves the view. The page's view keeps
+// running beside it. opts: { onChange(on), onStall(nowMs) }: onStall fires
+// when the page has stopped drawing (standalone headsets pause the page while
+// in VR); the view uses it to keep its own clock moving.
+export function createVR(api, opts = {}) {
+  let renderer = null;
+  let session = null;
+  let env = null;
+  let lastUpdate = performance.now();
+  let lastXR = 0;
+  const rig = new THREE.Group();
+  rig.name = 'vr-rig';
+  const cam = new THREE.PerspectiveCamera(70, 1, 0.05, 6e10);
+  rig.add(cam);
+  // Notice when the page drives the scene (engine.mount calls update()).
+  const origUpdate = api.update;
+  api.update = function (dt) {
+    lastUpdate = performance.now();
+    return origUpdate.apply(this, arguments);
+  };
+  function place() {
+    const s = Math.max(3, api.size || 4);
+    const d = s * 2.3;
+    rig.position.set(d * 0.55, d * 0.1, d * 0.85);
+    rig.rotation.set(0, Math.atan2(rig.position.x, rig.position.z), 0);
+  }
+  function frame() {
+    const now = performance.now();
+    const dt = lastXR ? Math.min(0.05, (now - lastXR) / 1000) : 0.016;
+    lastXR = now;
+    if (now - lastUpdate > 150) {
+      try {
+        if (opts.onStall) opts.onStall(now);
+        origUpdate.call(api, dt);
+      } catch (e) {}
+    }
+    const keep = api.scene.environment;
+    if (env) api.scene.environment = env;
+    try {
+      renderer.render(api.scene, cam);
+    } finally {
+      api.scene.environment = keep;
+    }
+  }
+  function ended() {
+    if (renderer) renderer.setAnimationLoop(null);
+    api.scene.remove(rig);
+    session = null;
+    if (opts.onChange) opts.onChange(false);
+  }
+  return {
+    rig,
+    get active() {
+      return !!session;
+    },
+    async enter() {
+      if (session) return true;
+      const xr = globalThis.navigator && navigator.xr;
+      if (!xr) throw new Error('WebXR is not available');
+      const s = await xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor'] });
+      session = s;
+      try {
+        if (!renderer) {
+          renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' });
+          renderer.outputColorSpace = THREE.SRGBColorSpace;
+          renderer.toneMapping = THREE.ACESFilmicToneMapping;
+          renderer.xr.enabled = true;
+          renderer.xr.setReferenceSpaceType('local');
+          import('../../vendor/RoomEnvironment.js')
+            .then(({ RoomEnvironment }) => {
+              if (!renderer) return;
+              const pm = new THREE.PMREMGenerator(renderer);
+              env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+              pm.dispose();
+            })
+            .catch(() => {});
+        }
+        place();
+        api.scene.add(rig);
+        s.addEventListener('end', ended);
+        await renderer.xr.setSession(s);
+        renderer.setAnimationLoop(frame);
+        if (opts.onChange) opts.onChange(true);
+        return true;
+      } catch (e) {
+        try {
+          await s.end();
+        } catch (err) {}
+        ended();
+        throw e;
+      }
+    },
+    async exit() {
+      if (session) await session.end().catch(() => {});
+    },
+    dispose() {
+      if (session) session.end().catch(() => {});
+      api.update = origUpdate;
+      api.scene.remove(rig);
+      if (renderer) {
+        renderer.setAnimationLoop(null);
+        renderer.dispose();
+        renderer = null;
+      }
+      if (env) env.dispose();
     },
   };
 }

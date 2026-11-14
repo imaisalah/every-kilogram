@@ -126,8 +126,17 @@ export function createSurface(opts) {
     const color = ROLE_COLORS[e.role] || '#ffffff';
     const col = new THREE.Color(color);
     const bottom = '#' + col.clone().multiplyScalar(0.42).getHexString();
+    // The character picked in setup (docs/TEAM-V3.md item 6): their build, height and face
+    // behind a clear visor; the suit keeps the job colour.
+    let look = null;
+    try {
+      look = opts.lookOf ? opts.lookOf(e) : null;
+    } catch (err) {
+      look = null;
+    }
+    const ap = look ? Object.assign({}, look, { name: e.name, visor: 'clear', suit: 'classic' }) : { name: e.name, hair: 'helmet', skin: SKINS_S[e.slot % 4], visor: 'gold', suit: 'classic' };
     const astro = createAstronaut(
-      { name: e.name, hair: 'helmet', skin: SKINS_S[e.slot % 4], visor: 'gold', suit: 'classic' },
+      ap,
       { outfit: 'launch', helmet: true, shadows: true, blob: false, colors: { top: color, bottom, accent: '#f4f6fb', trim: '#2b2f37', glove: '#e5e8ee', shoe: '#1b1d22' } }
     );
     const g = astro.group;
@@ -182,6 +191,7 @@ export function createSurface(opts) {
   // ---------- Ground markers ----------
   const pingGeo = new THREE.RingGeometry(1.2, 1.5, 36).rotateX(-Math.PI / 2);
   const pings = new Map();
+  const faults = new Map();
   const markRing = new THREE.RingGeometry(0.94, 1.0, 72).rotateX(-Math.PI / 2);
   const markFill = new THREE.CircleGeometry(1, 48).rotateX(-Math.PI / 2);
 
@@ -727,6 +737,41 @@ export function createSurface(opts) {
       scene.remove(m);
       m.material.dispose();
       pings.delete(id);
+    }
+    // Lander faults (the engineer's job): a steady amber ring and a soft beam on the hull.
+    const fseen = new Set();
+    for (const f of current.faults || []) {
+      const key = f.kind;
+      fseen.add(key);
+      let o = faults.get(key);
+      if (!o) {
+        const ring = new THREE.Mesh(markRing, haloMaterial(0xffb347, 0.75));
+        ring.userData.noAO = true;
+        ring.renderOrder = 4;
+        const fill = new THREE.Mesh(markFill, haloMaterial(0xffb347, 0.18));
+        fill.userData.noAO = true;
+        fill.renderOrder = 4;
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.5, 7, 12, 1, true).translate(0, 3.5, 0), beamMaterial(0xffb347, { opacity: 0.55, fade: 1.1 }));
+        beam.userData.noAO = true;
+        scene.add(ring, fill, beam);
+        o = { ring, fill, beam };
+        faults.set(key, o);
+      }
+      const y = world.height(f.x, f.z) + 0.1;
+      o.ring.position.set(f.x, y, f.z);
+      o.fill.position.set(f.x, y + 0.01, f.z);
+      o.beam.position.set(f.x, y, f.z);
+      o.ring.scale.setScalar(2.4);
+      o.fill.scale.setScalar(Math.max(0.05, 2.4 * clamp(f.fixT || 0)));
+    }
+    for (const [key, o] of faults) {
+      if (fseen.has(key)) continue;
+      scene.remove(o.ring, o.fill, o.beam);
+      o.ring.material.dispose();
+      o.fill.material.dispose();
+      o.beam.material.dispose();
+      o.beam.geometry.dispose();
+      faults.delete(key);
     }
   }
 

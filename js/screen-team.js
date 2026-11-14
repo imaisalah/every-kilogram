@@ -11,6 +11,12 @@
 // A view is { mount(el, ctx) -> cleanup }. ctx is live: ctx.state and ctx.view
 // always hold the latest, and ctx.subscribe(fn) calls fn after every change.
 (function () {
+  // Served from this computer (play.bat, file://): an invite link only works on this machine.
+  const localOnly = () => {
+    if (typeof location === 'undefined') return false;
+    if (location.protocol === 'file:') return true;
+    return /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?)$/i.test(location.hostname);
+  };
   const SMD = globalThis.SMD;
   const ui = SMD.ui;
   const t = (k, e, p) => SMD.t(k, e, p);
@@ -110,6 +116,7 @@
               <button type="button" class="ts-way small" data-mode="phones"><b>${esc(t('team.title.phones', 'Same room with phones'))}</b><span>${esc(t('team.title.phones.sub', 'One big screen, phones in hands'))}</span></button>
               <button type="button" class="ts-way small" data-mode="one"><b>${esc(t('team.title.one', 'One screen'))}</b><span>${esc(t('team.title.one.sub', 'Everyone around one device'))}</span></button>
             </div>
+            ${localOnly() ? `<p class="ts-local-note" role="note" style="max-width:34rem;margin:.9rem 0 .4rem;font-size:.92rem;line-height:1.55;opacity:.85">${esc(t('team.title.localonly', 'You opened the game from this computer, so friends on other devices cannot use your invite link. Open the game from its online link to play from anywhere, or start play-team.bat to play with phones on the same Wi-Fi.'))}</p>` : ''}
             <button type="button" class="ts-link" data-act="close-friends">${esc(t('team.back', 'Back'))}</button>
           </div>
           ${resumable ? `<p class="ts-resume">${esc(t('team.title.resume', 'Your room {code} is still open.', { code: resumable.code }))} <button type="button" class="ts-link" data-act="resume">${esc(t('team.title.resume.go', 'Go back'))}</button></p>` : ''}

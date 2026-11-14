@@ -15,7 +15,7 @@
     return String(text).replace(/\{(\w+)\}/g, (m, k) => (params[k] !== undefined ? params[k] : m));
   }
   const t = (key, en, params) => (SMD.t ? SMD.t(`team.${key}`, en, params) : fill(en, params));
-  const T = (key, params) => t(key, STR[key], params);
+  const T = (key, params) => t(key, STR[key] !== undefined ? STR[key] : TD.V3_STR[key], params);
   const round = (x, n) => {
     const f = Math.pow(10, n || 0);
     return Math.round(x * f) / f;
@@ -58,11 +58,12 @@
   const difficultyOf = (id) => DIFFICULTIES.find((d) => d.id === id);
 
   function optionsFor(sc, key) {
+    if (sc.parts && sc.parts[key]) return sc.parts[key];
     switch (key) {
       case 'orbit': return sc.orbits;
       case 'launcher': return LAUNCHERS;
       case 'route': return sc.routes;
-      case 'lifetime': return sc.lifetimes.map((l) => ({ ...l, name: l.years === 1 ? '1 year' : `${l.years} years`, note: lifetimeNote(l, sc) }));
+      case 'lifetime': return sc.lifetimes.map((l) => ({ ...l, name: l.years === 1 ? '1 year' : l.years < 1 ? `${Math.round(l.years * 12)} months` : `${l.years} years`, note: lifetimeNote(l, sc) }));
       case 'panels': return sc.panels;
       case 'instruments': return sc.instruments.map((id) => ({ id, ...INSTRUMENTS[id] }));
       default: return COMMON[key] || [];
@@ -170,10 +171,11 @@
       objective: t(`scn.${s.id}.objective`, s.objective), training: !!s.training, landing: !!s.surface, platform: s.surface ? s.surface.platform : null,
       requirements: s.requirements.map((r) => ({ id: r.id, title: t(`scn.${s.id}.req.${r.id}.title`, r.title), text: t(`scn.${s.id}.req.${r.id}.text`, r.text) })),
       objectives: s.objectives.map((o) => ({ id: o.id, title: t(`scn.${s.id}.obj.${o.id}`, o.title) })),
+      cubesat: !!s.cubesat,
     }));
   }
   function difficulties() {
-    return DIFFICULTIES.map((d) => ({ id: d.id, title: t(`diff.${d.id}.title`, d.title), note: t(`diff.${d.id}.note`, d.note), tier: d.tier, designSec: d.designSec, budgetMult: d.budgetMult, crises: d.crises, flaws: d.flaws, instrumentMax: INSTRUMENT_MAX[d.id] }));
+    return DIFFICULTIES.map((d) => ({ id: d.id, title: t(`diff.${d.id}.title`, d.title), note: t(`diff.${d.id}.note`, d.note), tier: d.tier, designSec: d.designSec, budgetMult: d.budgetMult, crises: d.crises, flaws: d.flaws, instrumentMax: INSTRUMENT_MAX[d.id], cml: cml(d.id) }));
   }
 
   // ---------- Designs ----------
@@ -186,7 +188,7 @@
     }
     const want = sc.starter && sc.starter[key];
     if (want !== undefined && list.some((o) => o.id === want)) return want;
-    const std = { structure: 'standard', adcs: 'wheels', computer: 'single', propMargin: 'm25', duty: 'd60', processing: 'compress', coding: 'robust', schedule: 'plan', route: list[0] && list[0].id, ascent: 'a60', oxygen: 'o1', drill: 'hand' }[key];
+    const std = { structure: 'standard', adcs: 'wheels', computer: 'single', propMargin: 'm25', duty: 'd60', processing: 'compress', coding: 'robust', schedule: 'plan', route: list[0] && list[0].id, ascent: 'a60', oxygen: 'o1', drill: 'hand', thermal: 'standard' }[key];
     if (std !== undefined && list.some((o) => o.id === std)) return std;
     return list.length ? list[0].id : undefined;
   }
@@ -315,6 +317,11 @@
     const ground = pickObj(sc, 'ground', p.ground);
     const coding = pickObj(sc, 'coding', p.coding);
     const rec = pickObj(sc, 'recorder', p.recorder);
+    // Thermal control (v3): a design without a pick has the standard system, as before.
+    const thermList = optionsFor(sc, 'thermal');
+    const therm = thermList.find((o) => o.id === p.thermal) || thermList.find((o) => o.id === 'standard') || thermList[0];
+    const thermalNeed = sc.thermalNeed || 0.5;
+    const thermalShort = therm.cap < thermalNeed ? sc.thermalEnv || 'cold' : null;
     const insts = (p.instruments || []).map((id) => ({ id, ...INSTRUMENTS[id] }));
     const surf = sc.surface ? surfaceParts(sc, p) : { mass: 0, costM: 0, powerW: 0, list: [] };
     const orb = orbitInfo(o, sc);
@@ -322,7 +329,8 @@
     // Power
     const arrayBaseW = panel.rtg ? 0 : panelWatts(panel, sc);
     const rtgW = panel.rtg ? panel.watts : 0;
-    const busW = sc.busW + adcs.powerW + comp.powerW + sc.heaterW + proc.powerW;
+    const heaterW = sc.heaterW * therm.heaterMult + (therm.powerW || 0);
+    const busW = sc.busW + adcs.powerW + comp.powerW + heaterW + proc.powerW;
     const instPowerW = insts.reduce((s, i) => s + i.power, 0);
     const dutyFrac = duty.frac;
     // Cameras only work in sunlight; radars and the rest keep running in shadow.
@@ -337,7 +345,7 @@
     const pointing = adcs.pointing;
     // A big dish needs steady pointing to hit Earth.
     const pointLoss = ant.diaM >= 2 ? Math.min(1, pointing / (ant.diaM >= 3 ? 1.2 : 0.95)) : 1;
-    const K = sc.linkMode === 'near' ? 1.2e-4 : GD_K;
+    const K = sc.linkK || (sc.linkMode === 'near' ? 1.2e-4 : GD_K);
     const rawRate = (K * radio.rfW * ant.diaM * ant.diaM) / (rangeAU * rangeAU);
     const rateMbps = Math.min(radio.maxMbps, rawRate) * coding.rate * pointLoss;
     const pass = o.passes || {};
@@ -369,8 +377,8 @@
     // Mass
     const partsMass = (sc.busKg || 0) + insts.reduce((s, i) => s + i.mass, 0) + panelMass(panel) + bat.mass + adcs.mass + comp.mass + ant.mass + radio.mass + rec.mass + surf.mass;
     const structMass = struct.frac * partsMass + struct.mass;
-    const thermalMass = sc.thermalFrac * partsMass;
-    const engineMass = 20;
+    const thermalMass = sc.thermalFrac * partsMass * therm.massMult;
+    const engineMass = sc.engineKg !== undefined ? sc.engineKg : 20;
     const arrival = arrivalDv(o, sc, route);
     const opsDv = o.dvPerYear * life.years;
     const margin = pm.frac;
@@ -388,15 +396,15 @@
     const capacity = capacityTo(launcher, o, sc, route);
 
     // Cost
-    const partCost = insts.reduce((s, i) => s + i.cost, 0) + panelCost(panel) + bat.costM + adcs.costM + comp.costM + ant.costM + radio.costM + rec.costM + (struct.costM || 0) + surf.costM;
-    const devM = (sc.busCost + 0.05 * dry + partCost) * sched.costMult;
+    const partCost = insts.reduce((s, i) => s + i.cost, 0) + panelCost(panel) + bat.costM + adcs.costM + comp.costM + ant.costM + radio.costM + rec.costM + (struct.costM || 0) + surf.costM + (therm.costM || 0);
+    const devM = (sc.busCost + (sc.devPerKg !== undefined ? sc.devPerKg : 0.05) * dry + partCost) * sched.costMult;
     const launchM = launcher.costM * (route.costMult || 1);
     const groundPerYear = sc.linkMode === 'near' ? ground.nearPerYear : ground.deepPerYear;
     const cruiseYears = (route.opsMonths || 0) / 12;
     const opsM = (sc.opsPerYear + groundPerYear) * (life.years + cruiseYears);
     const devMonths = sc.devBase + 0.8 * Math.max(0, insts.length - 1) + (sched.months || 0) + (sc.surface ? 0.5 * surf.list.length * 0.5 : 0);
     const deadline = sc.deadlineMonths;
-    const latePenalty = devMonths > deadline ? (devMonths - deadline) * (sc.dest === 'mars' ? 12 : 5) : 0;
+    const latePenalty = devMonths > deadline ? (devMonths - deadline) * (sc.latePerMonth || (sc.dest === 'mars' ? 12 : 5)) : 0;
     const costM = devM + launchM + opsM + latePenalty;
     const budget = diff.budgetMult === null ? null : sc.budgetM * diff.budgetMult;
 
@@ -405,10 +413,13 @@
     const dosePerYear = o.radKrad;
     const radLifeYears = hardness / dosePerYear;
     const dragYears = o.dragYears;
+    // No engine (CubeSats): thin air ends the mission when it ends.
+    const reentryYears = sc.noPropulsion ? dragYears : Infinity;
 
     return {
       _req: design.requirement,
       sc, diff, o, launcher, route, life, sched, struct, panel, bat, adcs, comp, pm, duty, proc, ant, radio, ground, coding, rec, insts, surf, orb,
+      therm, thermalNeed, thermalShort, heaterW, reentryYears,
       arrayBaseW, rtgW, busW, instPowerW, instAvgW, eclipseH, eclipseWh, eclipseInstW, dutyFrac,
       onFraction, rangeAU, pointing, rawRate, rateMbps, dailySec, passFrac, gapDays, downGbitDay, obsFrac, genGbitDay, genRates, bufferNeed,
       partsMass, structMass, thermalMass, dry, prop, wet, capacity, massMargin: capacity - wet, arrival, opsDv, dv, tankKg, partCost, devM, launchM, opsM, costM, budget, latePenalty,
@@ -455,12 +466,15 @@
     const bufRatio = d.bufferNeed / d.rec.gbit;
     const commsRatio = d.genGbitDay / Math.max(1e-6, d.downGbitDay);
     const timeRatio = d.deadline ? d.devMonths / d.deadline : 0;
-    const lifeShort = d.radLifeYears < d.lifeYears;
+    const lifeShort = d.radLifeYears < d.lifeYears || d.reentryYears < d.lifeYears;
+    // CubeSat-scale numbers keep their decimals; big missions round as before.
+    const kg = (x) => (Math.abs(x) < 50 ? round(x, 1) : Math.round(x));
+    const usd = (x) => (Math.abs(x) < 10 ? round(x, 2) : Math.abs(x) < 50 ? round(x, 1) : Math.round(x));
     return {
       mass: {
-        value: Math.round(d.wet), limit: Math.round(d.capacity), unit: 'kg', status: statusFor(massRatio, 0.9),
+        value: kg(d.wet), limit: kg(d.capacity), unit: 'kg', status: statusFor(massRatio, 0.9),
         why: T('res.mass.why', { rocket: optionName(d.sc, 'launcher', d.launcher) }),
-        dry: Math.round(d.dry), prop: Math.round(d.prop), payload: Math.round(d.partsMass), marginKg: Math.round(d.massMargin),
+        dry: kg(d.dry), prop: kg(d.prop), payload: kg(d.partsMass), marginKg: kg(d.massMargin),
       },
       power: {
         value: Math.round(pb.inAvg), limit: Math.round(pb.load), unit: 'W', status: statusFor(powerRatio),
@@ -469,9 +483,9 @@
         eclipsePct: Math.round(d.orb.eclipse * 100), batteryWh: d.bat.wh, batteryNeedWh: Math.round(d.eclipseWh), loadW: Math.round(pb.load),
       },
       budget: {
-        value: Math.round(d.costM), limit: d.budget === null ? null : Math.round(d.budget), unit: '$M', status: d.budget === null ? 'ok' : statusFor(budgetRatio, 0.93),
-        why: T('res.budget.why', { dev: Math.round(d.devM), launch: Math.round(d.launchM), ops: Math.round(d.opsM) }),
-        devM: Math.round(d.devM), launchM: Math.round(d.launchM), opsM: Math.round(d.opsM), lateM: Math.round(d.latePenalty),
+        value: usd(d.costM), limit: d.budget === null ? null : usd(d.budget), unit: '$M', status: d.budget === null ? 'ok' : statusFor(budgetRatio, 0.93),
+        why: T('res.budget.why', { dev: usd(d.devM), launch: usd(d.launchM), ops: usd(d.opsM) }),
+        devM: usd(d.devM), launchM: usd(d.launchM), opsM: usd(d.opsM), lateM: usd(d.latePenalty),
       },
       data: {
         value: round(d.bufferNeed, 1), limit: d.rec.gbit, unit: 'Gbit', status: statusFor(bufRatio, 0.85),
@@ -486,7 +500,7 @@
       time: {
         value: round(d.devMonths, 1), limit: d.diff.id === 'sandbox' ? null : d.deadline, unit: 'months', status: d.diff.id === 'sandbox' ? 'ok' : (lifeShort || d.devMonths > d.deadline) ? 'bad' : d.devMonths > d.deadline - 2 ? 'warn' : 'ok',
         why: T('res.time.why'),
-        lifeYears: d.lifeYears, maxLifeYears: round(d.radLifeYears, 2), lifeLimitedBy: lifeShort ? 'radiation' : d.dragYears < d.lifeYears ? 'drag' : null,
+        lifeYears: d.lifeYears, maxLifeYears: round(Math.min(d.radLifeYears, d.reentryYears), 2), lifeLimitedBy: d.radLifeYears < d.lifeYears ? 'radiation' : d.dragYears < d.lifeYears ? 'drag' : null,
       },
     };
   }
@@ -521,8 +535,10 @@
     list.push({ id: 'instruments', hard: false, ok: measured, text: measured ? T('check.instruments') : T('check.instruments.bad') });
     const timeOk = d.diff.id === 'sandbox' || d.devMonths <= d.deadline;
     list.push({ id: 'time', hard: false, ok: timeOk, text: timeOk ? T('check.time') : T('check.time.bad', { months: round(d.devMonths, 1), limit: d.deadline }) });
-    const lifeOk = d.radLifeYears >= d.lifeYears;
-    list.push({ id: 'life', hard: false, ok: lifeOk, text: lifeOk ? T('check.life') : T('check.life.bad', { max: round(d.radLifeYears, 1) }) });
+    const lifeOk = d.radLifeYears >= d.lifeYears && d.reentryYears >= d.lifeYears;
+    list.push({ id: 'life', hard: false, ok: lifeOk, text: lifeOk ? T('check.life') : T('check.life.bad', { max: round(Math.min(d.radLifeYears, d.reentryYears), 1) }) });
+    // Thermal control (v3): only when the chosen system is too weak for this world.
+    list.push({ id: 'thermal', hard: false, ok: !d.thermalShort, text: d.thermalShort ? T(d.thermalShort === 'hot' ? 'check.thermal.hot' : 'check.thermal.cold') : T('check.thermal') });
     return list;
   }
   function objectiveCoverage(d) {
@@ -584,13 +600,20 @@
     const sc = scenarioOf(design.scenario);
     const diff = difficultyOf(design.difficulty) || difficultyOf('engineer');
     const rng = rngOf(`${seed}:${design.scenario}:crises`);
-    const pool = CRISES.slice();
+    const pool = CRISES.filter((c) => !(sc.noCrises || []).includes(c.id) && !c.only);
     const picks = [];
     const nCrises = diff.crises;
     for (let i = 0; i < nCrises && pool.length; i++) {
       const idx = Math.floor(rng() * pool.length);
       picks.push(pool.splice(idx, 1)[0]);
     }
+    // A signature mission always meets its own problem (TEAM-V3 item 19): it takes the
+    // last drawn crisis's place, so the random draws and timings stay as they were.
+    (sc.crisisSet || []).forEach((id, k) => {
+      const sig = CRISES.find((c) => c.id === id);
+      const at = picks.length - 1 - k;
+      if (sig && at >= 0) picks[at] = sig;
+    });
     const oppPool = OPPORTUNITIES.filter((o) => o.kinds.includes(sc.kind));
     for (let i = 0; i < diff.opportunities && oppPool.length; i++) {
       const idx = Math.floor(rng() * oppPool.length);
@@ -670,7 +693,8 @@
     let batteryMult = applyFlaw('batteryMult', 1);
     let panelMult = applyFlaw('panelMult', 1);
     const rateMultBase = applyFlaw('rateMult', 1);
-    const sciQuality = applyFlaw('sciQuality', 1);
+    // Overheating (thermal control too weak on a hot world) throttles the instruments.
+    const sciQuality = applyFlaw('sciQuality', 1) * (d.thermalShort === 'hot' ? 0.75 : 1);
     let pointMult = 1;
 
     const lifeDays = d.lifeYears * 365.25;
@@ -714,6 +738,7 @@
     let deadT = null;
     let orbiterParked = false;
     let sciCache = 0;
+    let thermalShown = false;
 
     function pushFrame(frame) {
       frames.push(frame);
@@ -776,9 +801,18 @@
       const sunShare = 1 - eclipseShare;
       const sunlit = eclipseShare < 0.2;
 
-      const panelDeg = Math.pow(0.985, ageYears);
-      const batFade = 1 - 0.03 * ageYears;
-      const capNow = capacityWh * batteryMult * clamp(batFade, 0.4, 1);
+      const panelDeg = Math.pow(0.985, ageYears * d.therm.ageMult);
+      const batFade = 1 - 0.03 * ageYears * d.therm.ageMult;
+      // Too cold a ship in the dark: cold cells hold less, and the instruments are
+      // switched off to keep the electronics warm (thermal control too weak, v3).
+      const coldNow = d.thermalShort === 'cold' && (eclipseShare > 0.5 || (sc.au > 3 && step % 2 === 0));
+      const capNow = capacityWh * batteryMult * clamp(batFade, 0.4, 1) * (coldNow ? 0.8 : 1);
+      if (!dead && d.thermalShort && !thermalShown && (coldNow || (d.thermalShort === 'hot' && sunShare > 0.5))) {
+        thermalShown = true;
+        recordEvent({ t: frameT(), kind: 'thermal', role: 'engineer', env: d.thermalShort, text: T(d.thermalShort === 'hot' ? 'event.thermal.hot' : 'event.thermal.cold') });
+      }
+      // No engine (CubeSats): the air pulls it down when its time is up.
+      if (!dead && missionFrac * d.lifeYears >= d.reentryYears) markDead('drag', step);
       const powerIn = dead ? 0 : sunShare * d.arrayBaseW * panelMult * panelDeg + d.rtgW;
       const lastStep = false;
 
@@ -806,7 +840,7 @@
 
       // Instruments on this step?
       const socBefore = batteryWh / Math.max(1, capNow);
-      const shedInst = socBefore < 0.25 || step < instOffUntil;
+      const shedInst = socBefore < 0.25 || step < instOffUntil || coldNow;
       const shedRadio = socBefore < 0.06;
       if (!dead) {
         // Generation
@@ -1052,6 +1086,21 @@
         else fuelKg *= 0.68;
       } else if (type === 'antennaGlitch') {
         linkOffUntil = Math.max(linkOffUntil, step + (fixed ? nOrb : 4 * nOrb));
+      } else if (type === 'lunarEclipse') {
+        // Signature crises (v3): a fix costs nothing, a miss hurts.
+        if (!fixed) {
+          batteryMult *= 0.85;
+          instOffUntil = Math.max(instOffUntil, step + 2 * nOrb);
+          batteryWh = Math.min(batteryWh, capacityWh * batteryMult * 0.4);
+        }
+      } else if (type === 'dustStorm') {
+        if (!fixed) {
+          panelMult *= 0.8;
+          pointHoldUntil = Math.max(pointHoldUntil, step + 3 * nOrb);
+        }
+      } else if (type === 'tumble') {
+        if (!fixed) linkOffUntil = Math.max(linkOffUntil, step + 3 * nOrb);
+        if (!fixed) pointHoldUntil = Math.max(pointHoldUntil, step + 4 * nOrb);
       } else if (type === 'computerFault') {
         if (fixed) {
           if (d.comp.redundancy < 2) instOffUntil = Math.max(instOffUntil, step + nOrb);
@@ -1107,64 +1156,136 @@
     return clamp(covered / stepSec, 0, 1);
   }
 
-  // ---------- Score ----------
+  // ---------- Score (docs/TEAM-V3.md item 12) ----------
+  // Four axes, every point traceable to one line: mission requirements met (300),
+  // science returned (300), efficiency (200) and teamwork (200). The outcome sets a
+  // band the total must sit in, so a lost or failed mission never beats a successful one.
+  const BANDS = { full: [750, 1000], partial: [450, 749], fail: [0, 449], lost: [0, 299] };
+  const DEATHS = ['power', 'drag', 'radiation', 'computer', 'attitude', 'nav', 'breakup', 'insertion', 'flaw', 'deploy'];
+  function outcomeOf(flight, ss) {
+    const r = (flight && flight.result) || {};
+    if (DEATHS.includes(r.cause)) return 'lost';
+    if (ss) {
+      if (ss.crewTotal > 0 && ss.survivors < ss.crewTotal) return 'lost';
+      if (ss.outcome && ss.outcome !== 'extracted') return 'lost';
+    }
+    const orbit = r.success === 'full' || r.success === 'partial' ? r.success : 'fail';
+    if (!ss) return orbit;
+    const raw = ss.raw || {};
+    const won = raw.won !== undefined ? !!raw.won : ss.scienceFrac >= 0.6;
+    const met = !!(raw.science && raw.science.objectiveMet);
+    if (orbit === 'full' && won) return 'full';
+    if (orbit !== 'fail' || won || met || ss.scienceFrac >= 0.3) return 'partial';
+    return 'fail';
+  }
+  // Integer points that add up exactly: each item rounds against the running total.
+  function share(list) {
+    let acc = 0;
+    let given = 0;
+    return list.map((x) => {
+      acc += x.raw;
+      const pts = Math.round(acc) - given;
+      given += pts;
+      const out = { ...x, points: pts };
+      delete out.raw;
+      return out;
+    });
+  }
+  function axis(id, items, max, params) {
+    const value = items.reduce((s, x) => s + x.points, 0);
+    return { value, max, why: T(`score.why.${id}`, params), items };
+  }
   function score(design, flight, teamStats, surfaceSummary) {
     const d = derive(design);
     const r = flight.result;
     const ts = teamStats || {};
     const ss = normalizeSurface(surfaceSummary);
-    const scienceFromFlight = clamp(r.science / 100, 0, 1.15);
-    let scienceBase = scienceFromFlight;
-    let science;
-    if (ss) {
-      // Surface missions: the data you sent home counts too.
-      const surfaceFrac = clamp(ss.scienceFrac, 0, 1);
-      scienceBase = 0.55 * Math.min(1, scienceFromFlight) + 0.45 * surfaceFrac;
-      science = Math.round(400 * Math.min(1, scienceBase));
-    } else {
-      science = Math.round(400 * Math.min(1, scienceFromFlight));
-    }
-    let budgetFrac = 0;
-    if (d.budget !== null) budgetFrac = clamp((d.budget - d.costM) / (d.budget * 0.3), 0, 1);
-    else budgetFrac = 0.5;
-    const massFrac = clamp((d.capacity - d.wet) / (d.capacity * 0.25), 0, 1);
-    const lostFrac = clamp(r.lostFrac, 0, 1);
-    const eff = Math.round(100 * budgetFrac + 60 * massFrac + 40 * (1 - lostFrac));
-    const efficiency = d.budget !== null && d.costM > d.budget ? Math.round(eff * 0.3) : eff;
 
-    const lifeFrac = clamp(r.lifeFraction, 0, 1);
-    let survival = Math.round(120 * lifeFrac + (r.alive ? 80 : 0));
+    // 1. Mission requirements, from the traceability table, judged on what happened.
+    const reqs = requirementStatus(design, flight, surfaceSummary);
+    const each = 300 / Math.max(1, reqs.length);
+    const reqItems = share(reqs.map((q) => ({ id: q.id, key: q.key, label: `${q.id}: ${q.text}`, raw: q.met ? each : 0, max: Math.round(each), met: q.met, why: q.why })));
+    const reqMet = reqs.filter((q) => q.met).length;
+
+    // 2. Science returned.
+    const orbitFrac = clamp((r.science || 0) / 100, 0, 1);
+    const sciList = [];
     if (ss) {
-      const crewFrac = ss.crewTotal > 0 ? clamp(ss.survivors / ss.crewTotal, 0, 1) : 0;
-      survival = Math.round(80 * lifeFrac + 120 * crewFrac);
+      const surfaceFrac = clamp(ss.scienceFrac, 0, 1);
+      sciList.push({ id: 'orbit', label: T('score.item.orbit', { pct: Math.round(orbitFrac * 100) }), raw: 165 * orbitFrac, max: 165 });
+      sciList.push({ id: 'surface', label: T('score.item.surface', { pct: Math.round(surfaceFrac * 100) }), raw: 135 * surfaceFrac, max: 135 });
+    } else sciList.push({ id: 'orbit', label: T('score.item.orbit', { pct: Math.round(orbitFrac * 100) }), raw: 300 * orbitFrac, max: 300 });
+    const sciItems = share(sciList);
+
+    // 3. Efficiency: money left, lift to spare, data that got home.
+    const budgetFrac = d.budget !== null ? clamp((d.budget - d.costM) / (d.budget * 0.3), 0, 1) : 0.5;
+    const massFrac = clamp((d.capacity - d.wet) / (d.capacity * 0.25), 0, 1);
+    const lostFrac = clamp(r.lostFrac || 0, 0, 1);
+    const over = d.budget !== null && d.costM > d.budget;
+    const effList = [
+      { id: 'budget', label: T('score.item.budget', { left: moneyText(d.budget === null ? 0 : d.budget - d.costM) }), raw: 80 * budgetFrac, max: 80 },
+      { id: 'mass', label: T('score.item.mass', { n: fmtKg(d.capacity - d.wet) }), raw: 60 * massFrac, max: 60 },
+      { id: 'data', label: T('score.item.data', { pct: Math.round((1 - lostFrac) * 100) }), raw: 60 * (1 - lostFrac), max: 60 },
+    ];
+    if (over) {
+      const sum = effList.reduce((s, x) => s + x.raw, 0);
+      effList.push({ id: 'over', label: T('score.item.over'), raw: -0.7 * sum, max: 0 });
     }
-    // Teamwork
+    const effItems = share(effList);
+
+    // 4. Teamwork.
     const reqSent = ts.requestsSent || 0;
     const reqAns = ts.requestsAnswered || 0;
     const reqPart = reqSent > 0 ? clamp(reqAns / reqSent, 0, 1) : 0.5;
     const crisesTotal = ts.crisesTotal !== undefined ? ts.crisesTotal : r.crisesTotal;
     const crisesFixed = ts.crisesFixed !== undefined ? ts.crisesFixed : r.crisesFixed;
     const crisisPart = crisesTotal > 0 ? clamp(crisesFixed / crisesTotal, 0, 1) : 0.5;
+    const agendaList = ts.agendas;
     let agendaPart = 0.5;
-    let agendaList = ts.agendas;
     let agendasMet = 0;
     if (agendaList && agendaList.length) {
       agendasMet = agendaList.filter((a) => agendaMet(a, design, flight)).length;
       agendaPart = agendasMet / agendaList.length;
     }
-    const teamwork = Math.round(60 * reqPart + 90 * crisisPart + 50 * agendaPart);
-    const total = science + efficiency + survival + teamwork;
+    const teamItems = share([
+      { id: 'crises', label: crisesTotal > 0 ? T('score.item.crises', { a: crisesFixed || 0, b: crisesTotal }) : T('score.item.crises.none'), raw: 90 * crisisPart, max: 90 },
+      { id: 'requests', label: reqSent > 0 ? T('score.item.requests', { a: reqAns, b: reqSent }) : T('score.item.requests.none'), raw: 60 * reqPart, max: 60 },
+      { id: 'agendas', label: agendaList && agendaList.length ? T('score.item.agendas', { a: agendasMet, b: agendaList.length }) : T('score.item.agendas.none'), raw: 50 * agendaPart, max: 50 },
+    ]);
+
+    const axes = {
+      requirements: axis('requirements', reqItems, 300, { a: reqMet, b: reqs.length }),
+      science: axis('science', sciItems, 300),
+      efficiency: axis('efficiency', effItems, 200),
+      teamwork: axis('teamwork', teamItems, 200),
+    };
+    const earned = axes.requirements.value + axes.science.value + axes.efficiency.value + axes.teamwork.value;
+    const oid = outcomeOf(flight, ss);
+    const band = BANDS[oid];
+    const total = clamp(earned, band[0], band[1]);
+    const adjust = total - earned;
     const medal = total >= 850 ? 'gold' : total >= 650 ? 'silver' : total >= 420 ? 'bronze' : 'none';
     return {
       total,
-      science,
-      efficiency,
-      survival,
-      teamwork,
+      requirements: axes.requirements.value,
+      science: axes.science.value,
+      efficiency: axes.efficiency.value,
+      teamwork: axes.teamwork.value,
+      axes,
+      outcome: { id: oid, title: T(`outcome.${oid}`), band: band.slice(), earned, adjust, label: T('outcome.adjust'), why: T(`outcome.why.${oid}`) },
       medal,
       medalTitle: T(`medal.${medal}`),
-      details: { sciencePct: r.science, agendasMet, agendasTotal: agendaList ? agendaList.length : 0, crisesFixed, crisesTotal, costM: round(d.costM, 1), budgetM: d.budget === null ? null : round(d.budget, 0), massMarginKg: Math.round(d.capacity - d.wet), lifeFrac: round(lifeFrac, 3), surface: ss || null },
+      details: { sciencePct: r.science, requirementsMet: reqMet, requirementsTotal: reqs.length, agendasMet, agendasTotal: agendaList ? agendaList.length : 0, crisesFixed, crisesTotal, costM: round(d.costM, 2), budgetM: d.budget === null ? null : round(d.budget, 2), massMarginKg: round(d.capacity - d.wet, 1), lifeFrac: round(clamp(r.lifeFraction || 0, 0, 1), 3), surface: ss || null },
     };
+  }
+  function fmtKg(x) {
+    return Math.abs(x) < 50 ? String(round(x, 1)) : fmt(x);
+  }
+  function moneyText(x) {
+    const a = Math.abs(x);
+    const sign = x < 0 ? '−' : '';
+    if (a < 1) return t('val.moneyk', TD.V3_STR['val.moneyk'], { n: `${sign}${fmt(a * 1000)}` });
+    return t('val.money', TD.V3_STR['val.money'], { n: `${sign}${a < 10 ? round(a, 1) : fmt(a)}` });
   }
 
   // Tolerant reader for SMD.team.surface.summary(state).
@@ -1318,6 +1439,7 @@
       const cur = stepChoice(design, st);
       st.options.forEach((o) => {
         if (!st.multi && o.id === cur) return;
+        if (lockOf(design, st.id, o.id)) return;
         const n = applyStep(design, st.id, o.id);
         if (!n || n.error) return;
         const key = st.keys.find((k) => JSON.stringify(n.picks[k]) !== JSON.stringify(design.picks[k])) || st.keys[0];
@@ -1411,8 +1533,10 @@
       const ev = flight.events.find((e) => e.kind === 'brownout');
       if (ev) steps.push({ kind: 'power', text: T('chain.brownout', { orbit: ev.orbit + 1 }), why: T('chain.why.brownout'), delta: -r.brownouts });
     }
+    if (d.thermalShort) steps.push({ kind: 'power', text: T(d.thermalShort === 'hot' ? 'chain.thermal.hot' : 'chain.thermal.cold'), why: T('chain.why.thermal'), delta: -Math.round((d.thermalNeed - d.therm.cap) * 100) });
     if (r.cause === 'radiation') steps.push({ kind: 'radiation', text: T('chain.radiation', { dose: Math.round(r.doseKrad), shield: Math.round(r.hardnessKrad) }), why: T('chain.why.radiation'), delta: Math.round(r.doseKrad - r.hardnessKrad) });
-    if (r.cause === 'drag' || r.cause === 'attitude') steps.push({ kind: 'fuel', text: T('chain.fuel', { days: Math.round((1 - r.lifeFraction) * d.lifeYears * 365) }), why: T('chain.why.fuel'), delta: -Math.round((1 - r.lifeFraction) * d.lifeYears * 365) });
+    if (r.cause === 'drag' && d.sc.noPropulsion) steps.push({ kind: 'fuel', text: T('chain.reentry', { days: Math.round((1 - r.lifeFraction) * d.lifeYears * 365) }), why: T('chain.why.reentry'), delta: -Math.round((1 - r.lifeFraction) * d.lifeYears * 365) });
+    else if (r.cause === 'drag' || r.cause === 'attitude') steps.push({ kind: 'fuel', text: T('chain.fuel', { days: Math.round((1 - r.lifeFraction) * d.lifeYears * 365) }), why: T('chain.why.fuel'), delta: -Math.round((1 - r.lifeFraction) * d.lifeYears * 365) });
     if (r.primaryLoss === 'overflow') steps.push({ kind: 'data', text: T('chain.overflow', { lost: fmt(r.overflowGbit) }), why: T('chain.why.overflow'), delta: -Math.round(r.overflowGbit) });
     if (r.primaryLoss === 'overflow' || r.primaryLoss === 'comms') {
       if (d.genGbitDay > d.downGbitDay) steps.push({ kind: 'comms', text: T('chain.data.gen', { gen: round(d.genGbitDay, 1), cap: round(d.downGbitDay, 1) }), why: T('chain.why.data', { dist: distText(d) }), delta: round(d.downGbitDay - d.genGbitDay, 1) });
@@ -1470,8 +1594,8 @@
     const small = smallestRocket(d);
     const altSmall = smallestRocket(altD);
     if (small !== altSmall) {
-      const lA = LAUNCHERS.find((x) => x.id === small);
-      const lB = LAUNCHERS.find((x) => x.id === altSmall);
+      const lA = optionsFor(d.sc, 'launcher').find((x) => x.id === small);
+      const lB = optionsFor(d.sc, 'launcher').find((x) => x.id === altSmall);
       steps.push({ kind: 'launcher', text: T('chain.launcher', { to: optionName(d.sc, 'launcher', lA), sign: '+', cost: lA.costM - lB.costM }), why: T('chain.why.launcher'), delta: lA.costM - lB.costM });
     }
     if (d.budget !== null) {
@@ -1648,7 +1772,7 @@
       spareO2: oxygen ? oxygen.spareO2 : 0,
       medkits: 0,
       drill: drill ? { id: drill.id, depthM: drill.depthM, speed: drill.speed, damage: drill.damage } : null,
-      power: { solarW: solarW1AU, batteryWh: d.bat.wh, rtgW: d.rtgW },
+      power: { solarW: solarW1AU, batteryWh: d.thermalShort === 'cold' ? Math.round(d.bat.wh * 0.8) : d.bat.wh, rtgW: d.rtgW },
       instruments,
       recorderGbit: d.rec.gbit,
       uplink: { rateGbitS, everyS: win.everyS, windowS: win.windowS, firstS: win.firstS, label: win.label, realMbps: round(d.rateMbps, 3) },
@@ -1747,14 +1871,21 @@
   function stepsFor(sc, diff) {
     const keys = activeKeys(sc);
     const tier = stepTier(diff);
-    return TD.BUILD_STEPS.filter((st) => st.tier <= tier && (!st.landing || sc.surface) && st.keys.every((k) => keys.includes(k)));
+    return TD.BUILD_STEPS.filter((st) => st.tier <= tier && (!st.landing || sc.surface) && (!st.routeOnly || sc.routeStep) && st.keys.every((k) => keys.includes(k)));
   }
   function buildSteps(scenarioId, difficulty) {
     const sc = scenarioOf(scenarioId);
     if (!sc) return [];
     const diff = difficultyOf(difficulty) || difficultyOf('engineer');
     return stepsFor(sc, diff).map((st) => {
-      const out = { id: st.id, title: t(`step.${st.id}.title`, st.title), ask: t(`step.${st.id}.ask`, st.ask), role: st.role, keys: st.keys.slice(), res: st.res.slice(), multi: !!st.multi };
+      const text = sc.stepText && sc.stepText[st.id];
+      const out = {
+        id: st.id,
+        title: text ? t(`scn.${sc.id}.step.${st.id}.title`, text.title) : t(`step.${st.id}.title`, st.title),
+        ask: text ? t(`scn.${sc.id}.step.${st.id}.ask`, text.ask) : t(`step.${st.id}.ask`, st.ask),
+        role: st.role, keys: st.keys.slice(), res: st.res.slice(), multi: !!st.multi, segment: st.segment, serves: servesOf(sc, st.id),
+      };
+      const packs = (sc.packs && sc.packs[st.id]) || st.packs;
       if (st.multi) {
         out.max = INSTRUMENT_MAX[diff.id] || 3;
         out.min = 1;
@@ -1762,10 +1893,10 @@
           const c = decoratedOption(sc, diff, 'instruments', o);
           return { id: o.id, name: c.name, note: c.note, picks: { instruments: o.id } };
         });
-      } else if (st.packs) {
+      } else if (packs) {
         const seen = new Set();
         out.options = [];
-        st.packs.forEach((pk) => {
+        packs.forEach((pk) => {
           const picks = {};
           st.keys.forEach((k) => (picks[k] = resolvePick(sc, diff, k, pk.picks[k])));
           const sig = JSON.stringify(picks);
@@ -1855,6 +1986,7 @@
     const sc = scenarioOf(design.scenario);
     const now = stepChoice(design, st);
     const fitted = design.picks.instruments || [];
+    const depth = cml(design.difficulty).depth;
     const rows = st.options.map((o) => {
       let d2;
       if (st.multi) {
@@ -1885,7 +2017,7 @@
         }
       });
     };
-    const C = (key, params) => t(key, CARD[key], params);
+    const C = (key, params) => t(key, CARD[key] !== undefined ? CARD[key] : TD.V3_STR[key], params);
     const targetKey = `card.target.${TARGET[sc.surface && sc.surface.objective] || 'rock'}`;
     const target = () => C(targetKey);
     rows.forEach((r) => {
@@ -1922,7 +2054,7 @@
       case 'instruments':
         rows.forEach((r) => {
           const i = INSTRUMENTS[r.o.id];
-          r.nums = { massKg: i.mass, powerW: i.power, costM: i.cost, dataGb: i.rate };
+          r.nums = { massKg: i.mass, powerW: i.power, costM: i.cost, dataGb: i.rate, sciPct: Math.round(scienceValue(sc, r.o.id, reqOf(sc, design)) * 100) };
           if (scienceValue(sc, r.o.id) <= 0) r.cons.push(C('card.sci.none'));
           let best = null;
           sc.objectives.forEach((obj) => {
@@ -1948,6 +2080,30 @@
           if (r.res.data.status !== 'bad') r.pros.push(C('card.rec.ok', { n: fmtNum(r.dv.rec.gbit) }));
           else r.cons.push(C('card.rec.full'));
         });
+        break;
+      case 'route':
+        rows.forEach((r) => {
+          r.nums = { fuelKg: Math.round(r.dv.prop), costM: round(r.dv.opsM, 0) };
+          if (r.dv.route.risk) r.cons.push(C('card.route.risk'));
+          if (r.dv.route.opsMonths) r.cons.push(C('card.route.slow', { n: r.dv.route.opsMonths }));
+        });
+        rel((r) => r.dv.prop, -1, (r, v, lo, hi) => C('card.route.fuel', { n: fmt(hi - v) }), null, 5);
+        break;
+      case 'thermal':
+        rows.forEach((r) => {
+          r.nums = { massKg: round(r.dv.thermalMass, r.dv.thermalMass < 10 ? 1 : 0), powerW: Math.round(r.dv.heaterW), costM: r.dv.therm.costM || 0 };
+          if (r.dv.thermalShort) r.cons.push(C(r.dv.thermalShort === 'hot' ? 'card.thermal.hot' : 'card.thermal.cold'));
+          else r.pros.push(C('card.thermal.ok'));
+          if (r.dv.therm.ageMult < 1) r.pros.push(C('card.thermal.age'));
+          if (r.dv.therm.ageMult > 1) r.cons.push(C('card.thermal.wear'));
+        });
+        break;
+      case 'ground':
+        rows.forEach((r) => {
+          r.nums = { costM: round(r.dv.groundPerYear * r.dv.lifeYears, 2) };
+          if (r.res.comms.status === 'bad') r.cons.push(C('card.home.short'));
+        });
+        rel((r) => r.dv.dailySec, 1, (r) => C('card.ground.hours', { h: fmtNum(r.dv.dailySec / 3600) }), () => C('card.ground.wait'), 60);
         break;
       case 'computer':
         rows.forEach((r) => {
@@ -1975,7 +2131,8 @@
         break;
       case 'rocket':
         rows.forEach((r) => {
-          r.nums = { liftKg: Math.round(r.dv.capacity), costM: Math.round(r.dv.launchM) };
+          r.nums = { liftKg: r.dv.capacity < 50 ? round(r.dv.capacity, 1) : Math.round(r.dv.capacity), costM: r.dv.launchM < 10 ? round(r.dv.launchM, 2) : Math.round(r.dv.launchM) };
+          if (r.dv.launcher.u) r.pros.push(C('card.ride.slot', { u: r.dv.launcher.u }));
           const spare = Math.round(r.dv.capacity - r.dv.wet);
           if (spare >= 0) r.pros.push(C('card.rocket.fits', { n: spare }));
           else r.cons.push(C('card.rocket.over', { n: -spare }));
@@ -1994,14 +2151,643 @@
         else cons = cons.slice(0, -1);
       }
       const flies = !checks(r.d2).some((c) => c.hard && !c.ok);
-      return { id: r.o.id, name: r.o.name, note: r.o.note, picks: r.o.picks, on: r.on, pros, cons, nums: r.nums, flies, resources: r.res };
+      const card = { id: r.o.id, name: r.o.name, note: r.o.note, picks: r.o.picks, on: r.on, pros, cons, nums: r.nums, flies, resources: r.res, locked: lockOf(design, st.id, r.o.id), serves: st.serves, segment: st.segment };
+      // Concept maturity depth (v3 item 4): Engineer adds real specs, Flight director the point-design detail.
+      if (depth >= 2) card.specs = specsOf(sc, st, r);
+      if (depth >= 3) card.detail = detailOf(sc, st, r, st.serves);
+      return card;
     });
+  }
+
+  // ---------- v3: traceability, segments, CML depth, locks, AI crewmates ----------
+  // docs/TEAM-V3.md "As built (v3: build)". Pure, like everything else here.
+  const V = (key, params) => t(key, TD.V3_STR[key], params);
+
+  function segments() {
+    return TD.SEGMENTS.map((g) => ({ id: g.id, title: t(`seg.${g.id}.title`, g.title), blurb: t(`seg.${g.id}.blurb`, g.blurb) }));
+  }
+  function cml(difficulty) {
+    const id = TD.CML[difficulty] ? difficulty : 'engineer';
+    const c = TD.CML[id];
+    const key = id === 'sandbox' ? 'director' : id;
+    return { id, level: c.level, depth: c.depth, name: t(`cml.${key}.name`, c.name), what: t(`cml.${key}.what`, c.what), label: V('cml.label', { level: c.level }), short: V('cml.short', { level: c.level }) };
+  }
+  const reqOf = (sc, design) => sc.requirements.find((r) => r.id === (design && design.requirement)) || sc.requirements[0];
+  function primaryOf(sc, req) {
+    return sc.objectives.reduce((a, o) => ((req.weights[o.id] || 0) > (req.weights[a.id] || 0) ? o : a), sc.objectives[0]);
+  }
+  const siteText = (sc) => t(`card.target.${TARGET[sc.surface && sc.surface.objective] || 'rock'}`, CARD[`card.target.${TARGET[sc.surface && sc.surface.objective] || 'rock'}`]);
+  // The mission requirements of a scenario, numbered MR-1.. (landing worlds add one).
+  function missionReqs(sc, design) {
+    const req = reqOf(sc, design);
+    const primary = primaryOf(sc, req);
+    const params = { primary: t(`scn.${sc.id}.obj.${primary.id}`, primary.title), target: t(`scn.${sc.id}.target`, sc.target || ''), site: sc.surface ? siteText(sc) : '' };
+    const base = TD.MISSION_REQS.filter((m) => !m.landing || sc.surface).map((m) => ({ key: m.key, text: t(`mr.${m.key}`, m.text, params), steps: m.steps.slice(), segment: m.segment }));
+    const extra = (sc.extraReqs || []).map((m) => ({ key: m.key, text: t(`scn.${sc.id}.mr.${m.key}`, m.text, params), steps: m.steps.slice(), segment: m.segment }));
+    return base.concat(extra).map((m, i) => ({ id: `MR-${i + 1}`, ...m }));
+  }
+  function servesOf(sc, stepId) {
+    return missionReqs(sc, null).filter((m) => m.steps.includes(stepId)).map((m) => m.id);
+  }
+  // NASA's chain: need -> goal -> objectives -> measurements -> mission requirements -> concept.
+  function traceability(design) {
+    const sc = scenarioOf(design && design.scenario);
+    if (!sc) return null;
+    const req = reqOf(sc, design);
+    const primary = primaryOf(sc, req);
+    const objectives = sc.objectives
+      .map((o) => ({
+        id: o.id,
+        title: t(`scn.${sc.id}.obj.${o.id}`, o.title),
+        weight: req.weights[o.id] || 0,
+        primary: o.id === primary.id,
+        measure: t(`scn.${sc.id}.measure.${o.id}`, (sc.measure || {})[o.id] || o.title),
+        instruments: Object.keys(o.instruments).filter((id) => sc.instruments.includes(id) && o.instruments[id] >= 0.5).map((id) => ({ id, name: t(`instr.${id}.name`, INSTRUMENTS[id].name) })),
+      }))
+      .sort((a, b) => b.weight - a.weight);
+    return {
+      scenario: sc.id,
+      title: t(`scn.${sc.id}.title`, sc.title),
+      requirement: { id: req.id, title: t(`scn.${sc.id}.req.${req.id}.title`, req.title), text: t(`scn.${sc.id}.req.${req.id}.text`, req.text) },
+      need: t(`scn.${sc.id}.need`, sc.need || sc.question),
+      question: t(`scn.${sc.id}.question`, sc.question),
+      goal: t(`scn.${sc.id}.objective`, sc.objective),
+      objectives,
+      missionReqs: missionReqs(sc, design),
+      concept: t(`scn.${sc.id}.concept`, sc.concept || ''),
+      target: t(`scn.${sc.id}.target`, sc.target || ''),
+      landing: !!sc.surface,
+    };
+  }
+  // Which mission requirements this design meets: from the design alone before the
+  // flight, from what actually happened after it.
+  function requirementStatus(design, flight, surfaceSummary) {
+    const sc = scenarioOf(design && design.scenario);
+    if (!sc) return [];
+    const d = derive(design);
+    const ck = {};
+    checks(design).forEach((c) => (ck[c.id] = c));
+    const r = flight && flight.result;
+    const ss = normalizeSurface(surfaceSummary);
+    const req = reqOf(sc, design);
+    const primary = primaryOf(sc, req);
+    const fitAvg = d.insts.length ? d.insts.reduce((s, i) => s + fitFor(d, i), 0) / d.insts.length : 0;
+    const bad = (...ids) => ids.map((id) => ck[id]).find((c) => c && !c.ok);
+    return missionReqs(sc, design).map((m) => {
+      let met = false;
+      let why = '';
+      switch (m.key) {
+        case 'measure': {
+          const covers = d.insts.some((i) => (primary.instruments[i.id] || 0) >= 0.5);
+          if (r) {
+            const frac = (r.perObjective && r.perObjective[primary.id]) || 0;
+            met = frac >= 0.6;
+            why = V('mr.why.measure.flown', { pct: Math.round(Math.min(1, frac) * 100) });
+          } else {
+            met = covers;
+            why = V(covers ? 'mr.why.measure.ok' : 'mr.why.measure.bad');
+          }
+          break;
+        }
+        case 'view': {
+          met = fitAvg >= 0.75;
+          why = V(met ? 'mr.why.view.ok' : 'mr.why.view.bad');
+          break;
+        }
+        case 'power': {
+          const c = bad('power', 'battery', 'thermal');
+          if (r && r.brownouts > 0) {
+            met = false;
+            why = V('mr.why.power.flat', { n: r.brownouts });
+          } else if (r && r.cause === 'power') {
+            met = false;
+            why = T('cause.power');
+          } else {
+            met = !c;
+            why = c ? c.text : V('mr.why.power.ok');
+          }
+          break;
+        }
+        case 'data': {
+          if (r && r.generatedGbit > 0) {
+            const home = clamp(1 - (r.lostFrac || 0), 0, 1);
+            met = home >= 0.8;
+            why = V(met ? 'mr.why.data.ok' : 'mr.why.data.bad', { pct: Math.round((met ? home : 1 - home) * 100) });
+          } else {
+            const c = bad('comms', 'recorder');
+            met = !c && !(r && !r.generatedGbit);
+            why = c ? c.text : V('mr.why.ok');
+          }
+          break;
+        }
+        case 'life': {
+          if (r) {
+            const frac = clamp(r.lifeFraction || 0, 0, 1);
+            met = !!r.alive && frac >= 0.95;
+            why = met ? V('mr.why.life.ok') : r.cause && r.cause !== 'budget' ? T(`cause.${r.cause}`) : V('mr.why.life.bad', { pct: Math.round(frac * 100) });
+          } else {
+            const c = bad('life', 'time');
+            met = !c;
+            why = c ? c.text : V('mr.why.ok');
+          }
+          break;
+        }
+        case 'launch': {
+          const c = bad('launcher', 'budget');
+          met = !c;
+          why = c ? c.text : V('mr.why.launch.ok');
+          break;
+        }
+        case 'land': {
+          const near = landingInRange(sc, d.o);
+          if (!near) {
+            met = false;
+            why = V('mr.why.view.far', { target: siteText(sc) });
+          } else if (ss) {
+            const home = ss.crewTotal > 0 && ss.survivors >= ss.crewTotal && (!ss.outcome || ss.outcome === 'extracted');
+            const raw = ss.raw || {};
+            const samples = raw.samples ? raw.samples.returned || 0 : ss.samplesKg - ss.samplesLeftKg > 0 ? 1 : 0;
+            met = home && samples > 0;
+            why = V(!home ? 'mr.why.land.lost' : samples > 0 ? 'mr.why.land.ok' : 'mr.why.land.empty');
+          } else if (r) {
+            met = false;
+            why = V('mr.why.land.lost');
+          } else {
+            met = true;
+            why = V('mr.why.land.notyet');
+          }
+          break;
+        }
+        case 'night': {
+          const c = bad('thermal', 'battery');
+          met = !c && !(r && r.brownouts > 0);
+          why = c ? c.text : r && r.brownouts > 0 ? V('mr.why.power.flat', { n: r.brownouts }) : V('mr.why.ok');
+          break;
+        }
+        case 'arrive': {
+          const near = landingInRange(sc, d.o);
+          const risky = (d.route.risk || 0) > 0.1;
+          if (r && r.cause === 'nav') {
+            met = false;
+            why = T('cause.nav');
+          } else {
+            met = near && (!!r || !risky);
+            why = !near ? V('mr.why.arrive.far') : !r && risky ? V('mr.why.arrive.risky') : V('mr.why.ok');
+          }
+          break;
+        }
+        case 'dust': {
+          const pb = powerBudget(d);
+          met = pb.marginPct >= 30 && !(r && r.brownouts > 0);
+          why = met ? V('mr.why.ok') : V('mr.why.dust.low');
+          break;
+        }
+        case 'box': {
+          met = d.wet <= d.capacity && !!d.launcher.u;
+          why = met ? V('mr.why.ok') : V('mr.why.box.big');
+          break;
+        }
+        case 'databudget': {
+          if (r && r.generatedGbit > 0) {
+            const home = clamp(1 - (r.lostFrac || 0), 0, 1);
+            met = home >= 0.85;
+            why = V(met ? 'mr.why.data.ok' : 'mr.why.data.bad', { pct: Math.round((met ? home : 1 - home) * 100) });
+          } else {
+            const c = bad('comms', 'recorder');
+            met = !c;
+            why = c ? c.text : V('mr.why.ok');
+          }
+          break;
+        }
+        default:
+          break;
+      }
+      return { id: m.id, key: m.key, text: m.text, met, why, proof: proofOf(m.key, d, sc, design), fix: fixStep(m.steps), steps: m.steps, segment: m.segment };
+    });
+    function fixStep(ids) {
+      const steps = buildSteps(design.scenario, design.difficulty);
+      return ids.find((id) => steps.some((st) => st.id === id)) || null;
+    }
+  }
+  // The number that proves a requirement (TEAM-V3 item 21), for the review checklist.
+  function proofOf(key, d, sc, design) {
+    const pb = powerBudget(d);
+    const money = (x) => moneyText(x);
+    const life = (y) => (y === 1 ? V('val.year1') : y < 1 ? V('val.months', { n: Math.round(y * 12) }) : V('val.years', { n: nf(y) }));
+    switch (key) {
+      case 'measure': {
+        const req = reqOf(sc, design);
+        const fit = requirementFit(design).find((f) => f.id === req.id);
+        return V('proof.measure', { pct: Math.round(((fit && fit.fit) || 0) * 100), req: t(`scn.${sc.id}.req.${req.id}.title`, req.title) });
+      }
+      case 'view': {
+        const fit = d.insts.length ? d.insts.reduce((s, i) => s + fitFor(d, i), 0) / d.insts.length : 0;
+        return V('proof.view', { pct: Math.round(Math.min(1.5, fit) * 100) });
+      }
+      case 'power': return V('proof.power', { in: fmt(pb.inAvg), load: fmt(pb.load), wh: fmt(d.bat.wh), need: fmt(d.eclipseWh) });
+      case 'data': case 'databudget': return V(key === 'data' ? 'proof.data' : 'proof.databudget', { down: nf(d.downGbitDay), gen: nf(d.genGbitDay), rec: fmt(d.rec.gbit) });
+      case 'life': {
+        const max = Math.min(d.radLifeYears, d.reentryYears);
+        return V('proof.life', { max: max > 10 ? V('proof.long') : life(round(max, 1)), life: life(d.lifeYears) });
+      }
+      case 'launch': return V('proof.launch', { wet: fmtKg(d.wet), cap: fmtKg(d.capacity), cost: money(d.costM), budget: d.budget === null ? '∞' : money(d.budget) });
+      case 'land': {
+        const L = surfaceLoadout(design);
+        const near = landingInRange(sc, d.o);
+        return V('proof.land', { lift: L ? L.ascent.liftKg : 0, where: V(near ? 'proof.near' : 'proof.far', { site: siteText(sc) }) });
+      }
+      case 'night': return V('proof.night', { th: marginText((d.therm.cap - d.thermalNeed) / d.thermalNeed), wh: fmt(d.bat.wh), need: fmt(d.eclipseWh) });
+      case 'arrive': return V('proof.arrive', { m: fmt((d.o.landing && d.o.landing.accuracyM) || 0), risk: Math.round((d.route.risk || 0) * 100) });
+      case 'dust': return V('proof.dust', { pct: Math.round(pb.marginPct) });
+      case 'box': return V('proof.box', { kg: fmtKg(d.wet), u: d.launcher.u || '–', cap: fmtKg(d.capacity) });
+      default: return '';
+    }
+  }
+
+  // ---------- Locked choices (item 14) ----------
+  // null, or { reason } when this option cannot serve the objective here. A fitted
+  // instrument is never locked (taking it out is always allowed).
+  function lockOf(design, stepId, optionId) {
+    const sc = scenarioOf(design && design.scenario);
+    if (!sc) return null;
+    if (stepId === 'orbit') {
+      const o = sc.orbits.find((x) => x.id === optionId);
+      if (!o) return null;
+      if (o.lockAlways) return { reason: t(`scn.${sc.id}.orbit.${o.id}.lock`, o.lockAlways) };
+      const r = o.lockFor && o.lockFor[design.requirement];
+      if (r) return { reason: t(`scn.${sc.id}.orbit.${o.id}.lock.${design.requirement}`, r) };
+      return null;
+    }
+    if (stepId !== 'instruments') return null;
+    const inst = INSTRUMENTS[optionId];
+    if (!inst || (design.picks.instruments || []).includes(optionId)) return null;
+    if (sc.maxInstrumentKg && inst.mass > sc.maxInstrumentKg) return { reason: V('lock.big', { kg: inst.mass }) };
+    const d = derive(design);
+    const f = d.o.fit && d.o.fit[inst.kind] !== undefined ? d.o.fit[inst.kind] : 1;
+    if (f < 0.25) return { reason: V('lock.orbit', { orbit: optionName(sc, 'orbit', d.o) }) };
+    if (inst.needsDish && d.ant.diaM < inst.needsDish) return { reason: V('lock.dish', { n: inst.needsDish }) };
+    const req = reqOf(sc, design);
+    if (!sc.objectives.some((obj) => (req.weights[obj.id] || 0) > 0 && obj.instruments[optionId])) return { reason: V('lock.useless', { req: t(`scn.${sc.id}.req.${req.id}.title`, req.title) }) };
+    return null;
+  }
+
+  // ---------- CML depth on the cards (item 4) ----------
+  const nf = (x, d) => (Math.abs(x) >= 100 ? fmt(x) : String(round(x, d === undefined ? (Math.abs(x) < 10 ? 1 : 0) : d)));
+  const HERITAGE_BY_URL = {};
+  Object.keys(TD.SRC).forEach((k) => (HERITAGE_BY_URL[TD.SRC[k]] = k));
+  function heritageOf(o, key) {
+    const k = o && o.source ? HERITAGE_BY_URL[o.source] : null;
+    const id = k && TD.HERITAGE[k] ? k : key === 'launcher' ? 'launchers' : 'thermal';
+    return t(`her.${id}`, TD.HERITAGE[id]);
+  }
+  function trlOfCard(sc, st, o) {
+    if (st.multi) return (INSTRUMENTS[o.id] && INSTRUMENTS[o.id].trl) || 9;
+    return Object.keys(o.picks).reduce((m, k) => {
+      const x = pickObj(sc, k, o.picks[k]);
+      return Math.min(m, (x && x.trl) || 9);
+    }, 9);
+  }
+  const marginStatus = (m) => (m >= 0.2 ? 'ok' : m >= 0 ? 'warn' : 'bad');
+  const marginText = (m) => {
+    if (!isFinite(m) || m > 3) return '>+300%';
+    const p = Math.round(m * 100);
+    return `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p)}%`;
+  };
+  function marginOf(stepId, dv) {
+    const pb = powerBudget(dv);
+    switch (stepId) {
+      case 'power': case 'instruments': return { id: 'power', m: (pb.inAvg - pb.load) / Math.max(1e-6, pb.load) };
+      case 'batteries': return { id: 'battery', m: (dv.bat.wh - dv.eclipseWh) / Math.max(1e-6, dv.eclipseWh) };
+      case 'thermal': return { id: 'thermal', m: (dv.therm.cap - dv.thermalNeed) / dv.thermalNeed };
+      case 'radio': case 'ground': return { id: 'comms', m: dv.genGbitDay > 0 ? (dv.downGbitDay - dv.genGbitDay) / dv.genGbitDay : Infinity };
+      case 'recorder': return { id: 'data', m: (dv.rec.gbit - dv.bufferNeed) / Math.max(1e-6, dv.bufferNeed) };
+      case 'computer': case 'lifetime': return { id: 'life', m: (Math.min(dv.radLifeYears, dv.reentryYears) - dv.lifeYears) / dv.lifeYears };
+      default: return { id: 'mass', m: (dv.capacity - dv.wet) / Math.max(1e-6, dv.wet) };
+    }
+  }
+  function specsOf(sc, st, r) {
+    const dv = r.dv;
+    const s = [];
+    const add = (id, value) => value !== undefined && value !== null && value !== '' && s.push({ id, label: V(`spec.${id}`), value });
+    const kg = (x) => V('val.kg', { n: nf(x) });
+    const w = (x) => V('val.w', { n: nf(x, 0) });
+    const money = (x) => moneyText(x);
+    switch (st.id) {
+      case 'orbit': {
+        const o = dv.o;
+        add('height', o.apoKm && o.apoKm !== o.altKm ? V('val.kmkm', { a: fmt(o.altKm), b: fmt(o.apoKm) }) : V('val.km', { n: fmt(o.altKm) }));
+        add('period', dv.orb.periodMin >= 2880 ? V('val.days', { n: nf(dv.orb.periodDays, 0) }) : V('val.min', { n: fmt(dv.orb.periodMin) }));
+        add('dark', V('val.pct', { n: Math.round(dv.orb.eclipse * 100) }));
+        add('heritage', heritageOf(o, 'orbit'));
+        break;
+      }
+      case 'power': {
+        const p = dv.panel;
+        if (p.rtg) add('area', V('val.rtg', { n: p.rtg }));
+        else {
+          add('area', V('val.m2', { n: nf(p.areaM2, p.areaM2 < 1 ? 2 : 0) }));
+          add('eff', V('val.pct', { n: Math.round(p.eff * 100) }));
+        }
+        add('makes', w(dv.arrayBaseW + dv.rtgW));
+        add('mass', kg(panelMass(p)));
+        add('cost', money(panelCost(p)));
+        add('heritage', heritageOf(p, 'panels'));
+        break;
+      }
+      case 'batteries':
+        add('energy', V('val.wh', { n: fmt(dv.bat.wh) }));
+        add('density', V('val.whkg', { n: Math.round(dv.bat.wh / Math.max(0.01, dv.bat.mass)) }));
+        add('mass', kg(dv.bat.mass));
+        add('cost', money(dv.bat.costM));
+        add('heritage', heritageOf(dv.bat, 'batteries'));
+        break;
+      case 'thermal':
+        add('mass', kg(dv.thermalMass));
+        add('heater', w(dv.heaterW));
+        add('cost', dv.therm.costM ? money(dv.therm.costM) : V('val.none'));
+        add('heritage', heritageOf(dv.therm, 'thermal'));
+        break;
+      case 'instruments': {
+        const i = INSTRUMENTS[r.o.id];
+        add('mass', kg(i.mass));
+        add('power', w(i.power));
+        add('data', V('val.gbd', { n: nf(i.rate * (sc.rateMult || 1)) }));
+        add('cost', money(i.cost));
+        add('sci', V('val.sci', { n: Math.round(scienceValue(sc, r.o.id, reqOf(sc, r.d2)) * 100) }));
+        add('heritage', heritageOf(i, 'instruments'));
+        break;
+      }
+      case 'radio':
+        add('dish', V('val.m', { n: nf(dv.ant.diaM, dv.ant.diaM < 1 ? 2 : 1) }));
+        add('rf', V('val.uses', { a: nf(dv.radio.rfW, 0), b: nf(dv.radio.dcW, 0) }));
+        add('rate', V('val.mbps', { n: nf(dv.rateMbps, dv.rateMbps < 1 ? 2 : 1) }));
+        add('mass', kg(dv.ant.mass + dv.radio.mass));
+        add('cost', money(dv.ant.costM + dv.radio.costM));
+        add('heritage', heritageOf(dv.radio.source ? dv.radio : dv.ant, 'radio'));
+        break;
+      case 'ground':
+        add('stations', V('val.n', { n: dv.ground.stations }));
+        add('contact', V('val.hday', { n: nf(dv.dailySec / 3600, 1) }));
+        add('yearly', V('val.peryear', { m: money(dv.groundPerYear) }));
+        add('heritage', heritageOf(dv.ground, 'ground'));
+        break;
+      case 'recorder':
+        add('capacity', V('val.gbit', { n: fmt(dv.rec.gbit) }));
+        add('mass', kg(dv.rec.mass));
+        add('cost', money(dv.rec.costM));
+        add('heritage', heritageOf(dv.rec, 'recorder'));
+        break;
+      case 'computer':
+        add('mass', kg(dv.comp.mass + dv.adcs.mass));
+        add('power', w(dv.comp.powerW + dv.adcs.powerW));
+        add('pointing', V(dv.adcs.pointing >= 1.2 ? 'point.precise' : dv.adcs.pointing >= 0.9 ? 'point.steady' : 'point.rough'));
+        add('rad', V('val.krad', { n: fmt(dv.hardness) }));
+        add('cost', money(dv.comp.costM + dv.adcs.costM));
+        break;
+      case 'lifetime':
+        add('years', dv.lifeYears === 1 ? V('val.year1') : dv.lifeYears < 1 ? V('val.months', { n: Math.round(dv.lifeYears * 12) }) : V('val.years', { n: dv.lifeYears }));
+        add('ops', V('val.peryear', { m: money(dv.sc.opsPerYear + dv.groundPerYear) }));
+        add('cost', money(dv.opsM));
+        add('dose', V('val.krady', { n: nf(dv.dosePerYear) }));
+        break;
+      case 'landing': {
+        const L = surfaceLoadout(r.d2);
+        const air = pickObj(sc, 'oxygen', r.o.picks.oxygen);
+        const drill = pickObj(sc, 'drill', r.o.picks.drill);
+        add('fuel', kg(L ? L.ascent.extraFuelKg : 0));
+        add('lift', kg(L ? L.ascent.liftKg : 0));
+        add('air', V('val.days', { n: (air && air.spareO2) || 0 }));
+        add('drill', drill && drill.depthM ? V('val.m', { n: drill.depthM }) : V('val.none'));
+        add('mass', kg(r.nums.massKg || 0));
+        add('cost', money(r.nums.costM || 0));
+        break;
+      }
+      case 'rocket':
+        add('liftorbit', kg(dv.capacity));
+        add('cost', money(dv.launchM));
+        add('heritage', heritageOf(dv.launcher, 'launcher'));
+        break;
+      default:
+        break;
+    }
+    return s.slice(0, 6);
+  }
+  function detailOf(sc, st, r, serves) {
+    const dv = r.dv;
+    const out = [];
+    const mg = marginOf(st.id, dv);
+    out.push({ id: 'margin', label: V(`det.margin.${mg.id}`), value: marginText(mg.m), status: marginStatus(mg.m) });
+    const red = {
+      power: dv.panel.rtg ? 'red.rtg' : 'red.wings', batteries: 'red.cells', thermal: dv.therm.id === 'blanket' ? 'red.passive' : 'red.heaters', instruments: 'red.inst', radio: 'red.lga',
+      ground: dv.ground.stations > 1 ? 'red.stations' : 'red.station1', recorder: 'red.rec', computer: dv.comp.redundancy > 1 ? 'red.dual' : 'red.single', lifetime: 'red.ops',
+      landing: 'red.air', rocket: 'red.rocket', orbit: 'red.orbit',
+    }[st.id];
+    if (red && !(st.id === 'orbit' && sc.noPropulsion)) out.push({ id: 'redundancy', label: V('det.redundancy'), value: V(red, { n: dv.ground.stations }) });
+    let deg = null;
+    const years = dv.lifeYears;
+    if (st.id === 'power') {
+      if (dv.panel.rtg) deg = V('deg.rtg');
+      else {
+        const k = Math.pow(0.985, years * dv.therm.ageMult);
+        deg = V('deg.panels', { w: nf(dv.arrayBaseW * k, 0), pct: nf((1 - k) * 100, 1) });
+      }
+    } else if (st.id === 'batteries') {
+      const k = clamp(1 - 0.03 * years * dv.therm.ageMult, 0.4, 1);
+      deg = V('deg.battery', { wh: fmt(dv.bat.wh * k), pct: nf((1 - k) * 100, 1) });
+    } else if (st.id === 'thermal') deg = V(dv.therm.ageMult > 1 ? 'deg.thermal.fast' : dv.therm.ageMult < 1 ? 'deg.thermal.slow' : 'deg.thermal.normal');
+    else if (st.id === 'computer' || st.id === 'lifetime' || st.id === 'orbit') deg = sc.noPropulsion && st.id !== 'computer' ? V('deg.drag', { n: nf(dv.dragYears, 1) }) : V('deg.rad', { dose: nf(dv.dosePerYear * years), limit: fmt(dv.hardness) });
+    if (deg) out.push({ id: 'degrade', label: V('det.degrade'), value: deg });
+    const trl = trlOfCard(sc, st, r.o);
+    out.push({ id: 'trl', label: V('det.trl'), value: V(`trl.${Math.max(6, Math.min(9, trl))}`) });
+    out.push({ id: 'cost', label: V('det.cost'), value: V(trl >= 9 ? 'cost.10' : trl >= 7 ? 'cost.25' : 'cost.50'), status: trl >= 9 ? 'ok' : trl >= 7 ? 'warn' : 'bad' });
+    out.push({ id: 'verify', label: V('det.verify'), value: V('det.verify.val', { how: t(`verify.${st.id}`, TD.VERIFY[st.id] || ''), mr: serves.join(', ') }) });
+    return out;
+  }
+
+  // ---------- AI crewmates (item 2) ----------
+  // In solo, the three crewmates pick their own steps: the option that flies best for
+  // this requirement and difficulty (crises fixed, the rocket fitted afterwards), and
+  // they judge the player's suggestions the same way.
+  const PLAN_SEED = 'crew-plan';
+  const ACCEPT_TOLERANCE = 30;
+  function planScore(design) {
+    let d = design;
+    if (!isFlyable(d)) {
+      const f = fitLauncher(d);
+      if (isFlyable(f)) d = f;
+    }
+    const outcomes = {};
+    crisesFor(d, PLAN_SEED).forEach((c) => (outcomes[c.id] = c.kind === 'opportunity' ? 'taken' : 'fixed'));
+    const f = fly(d, PLAN_SEED, outcomes);
+    // Points earned, with the outcome first: no band clamp, so better is always visible.
+    const sc = score(d, f);
+    return { full: 3000, partial: 2000, fail: 1000, lost: 0 }[sc.outcome.id] + sc.outcome.earned - 0.0005 * derive(d).costM;
+  }
+  function crewLine(design, st, optionName) {
+    const sc = scenarioOf(design.scenario);
+    const dv = derive(design);
+    const option = optionName;
+    switch (st.id) {
+      case 'orbit': return sc.surface && landingInRange(sc, dv.o) ? V('crew.orbit.land', { option, target: siteText(sc) }) : V('crew.orbit', { option });
+      case 'power': return V('crew.power', { option, w: fmt(dv.arrayBaseW + dv.rtgW) });
+      case 'batteries': return V('crew.batteries', { option });
+      case 'thermal': return V(`crew.thermal.${sc.thermalEnv || 'mild'}`, { option });
+      case 'instruments': {
+        const req = reqOf(sc, design);
+        return V('crew.instruments', { list: option, req: t(`scn.${sc.id}.req.${req.id}.title`, req.title) });
+      }
+      case 'radio': return V('crew.radio', { option, home: nf(dv.downGbitDay), gen: nf(dv.genGbitDay) });
+      case 'ground': return V('crew.ground', { option, h: nf(dv.dailySec / 3600, 1) });
+      case 'recorder': return V('crew.recorder', { option });
+      case 'computer': return V('crew.computer', { option });
+      case 'lifetime': return V('crew.lifetime', { option });
+      case 'landing': {
+        const L = surfaceLoadout(design);
+        return L && L.ascent.liftKg > 0 ? V('crew.landing', { option, lift: L.ascent.liftKg }) : V('crew.landing.none', { option });
+      }
+      case 'rocket': return dv.wet <= dv.capacity ? V('crew.rocket', { option, spare: fmtKg(dv.capacity - dv.wet) }) : V('crew.rocket.none', { option });
+      default: return V('crew.pick', { option });
+    }
+  }
+  function subsets(ids, max) {
+    const out = [];
+    for (let mask = 1; mask < 1 << ids.length; mask++) {
+      const set = ids.filter((_, i) => mask & (1 << i));
+      if (set.length <= max) out.push(set);
+    }
+    return out;
+  }
+  // The crewmate's choice for one step: { option (id, or ids for instruments), design, line }.
+  function crewPick(design, stepId) {
+    const st = findStep(design, stepId);
+    if (!st) return null;
+    const free = st.options.filter((o) => !lockOf(design, st.id, o.id) || (st.multi && (design.picks.instruments || []).includes(o.id)));
+    if (!free.length) return null;
+    if (st.id === 'rocket') {
+      const tries = free.map((o) => ({ o, d2: applyStep(design, st.id, o.id) })).filter((x) => !x.d2.error);
+      const fits = tries.filter((x) => isFlyable(x.d2)).sort((a, b) => derive(a.d2).launchM - derive(b.d2).launchM);
+      const pick = fits[0] || tries.sort((a, b) => derive(b.d2).capacity - derive(a.d2).capacity)[0];
+      if (!pick) return null;
+      return { option: pick.o.id, design: pick.d2, line: crewLine(pick.d2, st, pick.o.name) };
+    }
+    if (st.id === 'landing') {
+      // The flight cannot value samples, so the scientist brings home as much as the
+      // budget and some rocket allow.
+      const tries = free
+        .map((o) => ({ o, d2: applyStep(design, st.id, o.id) }))
+        .filter((x) => !x.d2.error)
+        .map((x) => ({ ...x, lift: (surfaceLoadout(x.d2) || { ascent: { liftKg: 0 } }).ascent.liftKg, fitted: fitLauncher(x.d2) }))
+        .sort((a, b) => b.lift - a.lift);
+      const ok = tries.find((x) => isFlyable(x.fitted) && checks(x.fitted).find((c) => c.id === 'budget').ok) || tries[tries.length - 1];
+      if (!ok) return null;
+      return { option: ok.o.id, design: ok.d2, line: crewLine(ok.d2, st, ok.o.name) };
+    }
+    if (st.multi) {
+      const lockedOut =(design.picks.instruments || []).filter((id) => !st.options.some((o) => o.id === id));
+      let best = null;
+      subsets(free.filter((o) => !lockOf({ ...design, picks: { ...design.picks, instruments: [] } }, st.id, o.id)).map((o) => o.id), st.max || 3).forEach((ids) => {
+        const d2 = set(design, 'scientist', 'instruments', lockedOut.concat(ids).slice(0, st.max || 3));
+        if (!d2 || d2.error) return;
+        const sc2 = planScore(d2);
+        if (!best || sc2 > best.score + 1e-9) best = { ids, d2, score: sc2 };
+      });
+      if (!best) return null;
+      const names = best.ids.map((id) => (st.options.find((o) => o.id === id) || {}).name).filter(Boolean);
+      return { option: best.ids, design: best.d2, line: crewLine(best.d2, st, names.join(', ')) };
+    }
+    let best = null;
+    free.forEach((o) => {
+      const d2 = applyStep(design, st.id, o.id);
+      if (!d2 || d2.error) return;
+      const s2 = planScore(d2);
+      if (!best || s2 > best.score + 1e-9) best = { o, d2, score: s2 };
+    });
+    if (!best) return null;
+    return { option: best.o.id, design: best.d2, line: crewLine(best.d2, st, best.o.name) };
+  }
+  // The whole crew's plan for the steps they own: the coupled core (instruments, radio,
+  // power) is searched together, then everyone re-checks their own step twice, and the
+  // rocket comes last. -> { design, picks: { stepId: { option, line } } }
+  function crewPlan(design, stepIds) {
+    const ids = (stepIds || []).filter((id) => findStep(design, id));
+    let d = design;
+    const core = ['instruments', 'radio', 'power'].filter((id) => ids.includes(id));
+    if (core.length > 1) {
+      const choices = core.map((id) => {
+        const st = findStep(d, id);
+        if (st.multi) return subsets(st.options.filter((o) => !lockOf({ ...d, picks: { ...d.picks, instruments: [] } }, id, o.id)).map((o) => o.id), st.max || 3).map((x) => ({ multi: true, value: x }));
+        return st.options.filter((o) => !lockOf(d, id, o.id)).map((o) => ({ value: o.id }));
+      });
+      let best = null;
+      const walk = (i, cur) => {
+        if (i === core.length) {
+          const sc2 = planScore(cur);
+          if (!best || sc2 > best.score + 1e-9) best = { d: cur, score: sc2 };
+          return;
+        }
+        choices[i].forEach((c) => {
+          const n = c.multi ? set(cur, 'scientist', 'instruments', c.value) : applyStep(cur, core[i], c.value);
+          if (n && !n.error) walk(i + 1, n);
+        });
+      };
+      walk(0, d);
+      if (best) d = best.d;
+    }
+    const order = ids.filter((id) => id !== 'rocket');
+    for (let round = 0; round < 2; round++) {
+      order.forEach((id) => {
+        const p = crewPick(d, id);
+        if (p && p.design && !p.design.error) d = p.design;
+      });
+    }
+    if (ids.includes('rocket')) {
+      const p = crewPick(d, 'rocket');
+      if (p && p.design && !p.design.error) d = p.design;
+    }
+    const picks = {};
+    ids.forEach((id) => {
+      const st = findStep(d, id);
+      const now = stepChoice(d, st);
+      const names = (Array.isArray(now) ? now : [now]).map((x) => (st.options.find((o) => o.id === x) || {}).name).filter(Boolean).join(', ');
+      picks[id] = { option: now, line: crewLine(d, st, names) };
+    });
+    return { design: d, picks };
+  }
+  // A crewmate's answer to a suggestion: { ok, line, design (when ok) }.
+  function crewReview(design, stepId, optionId) {
+    const st = findStep(design, stepId);
+    if (!st) return { ok: false, line: V('crew.no.error') };
+    const lock = lockOf(design, stepId, optionId);
+    if (lock) return { ok: false, line: V('crew.no.locked', { reason: lock.reason }) };
+    const next = applyStep(design, stepId, optionId);
+    if (!next || next.error) return { ok: false, line: next && typeof next.error === 'string' ? next.error : V('crew.no.error') };
+    if (stepId === 'landing') {
+      // Samples are judged on the surface: fine as long as we can afford and lift it.
+      const fitted = fitLauncher(next);
+      const bad = checks(fitted).find((c) => (c.id === 'launcher' || c.id === 'budget') && !c.ok);
+      return bad ? { ok: false, line: V('crew.no.check', { check: bad.text }), gain: 0 } : { ok: true, line: V('crew.yes.same'), design: next, gain: 0, pickLine: crewLine(next, findStep(next, stepId), (findStep(next, stepId).options.find((o) => o.id === optionId) || {}).name || optionId) };
+    }
+    const gain = Math.round(planScore(next) - planScore(design));
+    const before = {};
+    checks(design).forEach((c) => (before[c.id] = c.ok));
+    const after = checks(next).filter((c) => c.id !== 'launcher');
+    const broke = after.find((c) => !c.ok && before[c.id]);
+    const fixed = after.find((c) => c.ok && before[c.id] === false);
+    if (gain >= -ACCEPT_TOLERANCE && !(broke && gain < 5)) {
+      const line = gain > 5 ? V('crew.yes.better', { n: gain }) : fixed ? V('crew.yes.fix', { check: fixed.text }) : V('crew.yes.same');
+      const st2 = findStep(next, stepId);
+      const now = stepChoice(next, st2);
+      const names = (Array.isArray(now) ? now : [now]).map((x) => (st2.options.find((o) => o.id === x) || {}).name).filter(Boolean).join(', ');
+      return { ok: true, line, design: next, gain, pickLine: crewLine(next, st2, names) };
+    }
+    return { ok: false, line: broke ? V('crew.no.check', { check: broke.text }) : V('crew.no.worse', { n: -gain }), gain };
   }
 
   // ---------- 3D craft ----------
   function toCraftDesign(design) {
     const d = derive(design);
-    const instruments = (design.picks.instruments || []).filter((id) => ['hires', 'context', 'irspec', 'neutron', 'sounder', 'iceRadar', 'sar', 'mag', 'uso'].includes(id));
+    const CUBE = { cubeCam: 'context', cubeWide: 'context', cubeTir: 'irspec', cubeHyper: 'irspec' };
+    const instruments = (design.picks.instruments || []).map((id) => CUBE[id] || id).filter((id, i, a) => a.indexOf(id) === i && ['hires', 'context', 'irspec', 'neutron', 'sounder', 'iceRadar', 'sar', 'mag', 'uso'].includes(id));
     const vault = { vault25: 25, vault75: 75, vault150: 150 }[design.picks.structure] || 0;
     return {
       instruments,
@@ -2013,6 +2799,9 @@
       shield: vault,
       avionics: d.comp.id === 'dual' ? 'dual' : 'single',
       margin: Math.round(d.pm.frac * 100),
+      cubesat: !!d.sc.cubesat,
+      units: d.launcher.u || null,
+      thermal: d.therm.id,
       info: { dryKg: Math.round(d.dry), propKg: Math.round(d.prop) },
     };
   }
@@ -2046,6 +2835,15 @@
     stepCards,
     setRequirement,
     requirementFit,
+    // v3 (docs/TEAM-V3.md "As built (v3: build)")
+    segments,
+    cml,
+    traceability,
+    requirementStatus,
+    lockOf,
+    crewPick,
+    crewPlan,
+    crewReview,
     _derive: derive,
     _hash: hash,
   };

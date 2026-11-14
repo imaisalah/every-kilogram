@@ -45,6 +45,7 @@
     'revive', 'pickup', 'drop', 'use', 'mount', 'dismount', 'needs_instrument', 'align', 'heal', 'dish', 'sample', 'astronaut', 'swarmer', 'spitter', 'burrower', 'hunter', 'rogue',
     'moon', 'mars', 'venus', 'europa', 'planner', 'engineer', 'scientist', 'comms',
     'rest', 'returning', 'shelter', 'deliver', 'oxygen', 'battery', 'suit', 'call', 'send', 'science', 'home', 'partial', 'success', 'resupply', 'hold', 'wait',
+    'panels', 'charger', 'systems', 'route', 'patch', 'watch', 'shadow', 'core',
   ];
   const WORD_INDEX = new Map(WORDS.map((w, i) => [w, i]));
 
@@ -84,11 +85,13 @@
     hazardEnd: ['kind:s'],
     rockfall: ['r:q'],
     quake: [],
-    ping: ['id:e', 'by:e'],
+    ping: ['id:e', 'by:e', 'site:e'],
     extractionCalled: ['by:e'],
     jettison: ['id:e'],
     liftoff: ['aboard:b'],
     lowO2: ['id:e'],
+    fault: ['kind:s'],
+    faultFixed: ['kind:s', 'by:e'],
   };
   const EVENT_NAMES = Object.keys(EVENT_FIELDS);
   const EVENT_INDEX = new Map(EVENT_NAMES.map((n, i) => [n, i]));
@@ -250,8 +253,8 @@
       const size = state.map.size;
       const players = state.entities
         .filter((e) => e.kind === 'astronaut')
-        .map((p) => ({ n: idOf(p.id), slot: p.slot, playerId: p.playerId, name: p.name, role: p.role, isBot: !!p.isBot }));
-      const sites = state.entities.filter((e) => e.kind === 'site').map((s) => ({ n: idOf(s.id), label: s.label, fits: s.fits, siteKind: s.siteKind, objective: !!s.objective, instrument: s.instrument || null }));
+        .map((p) => ({ n: idOf(p.id), slot: p.slot, playerId: p.playerId, name: p.name, role: p.role, isBot: !!p.isBot, crewId: p.crewId || null, playerName: p.playerName || null }));
+      const sites = state.entities.filter((e) => e.kind === 'site').map((s) => ({ n: idOf(s.id), label: s.label, fits: s.fits, siteKind: s.siteKind, objective: !!s.objective, instrument: s.instrument || null, shadow: !!s.shadow }));
       const windows = (state.uplink.windows || []).map((w) => ({ i: w.i, start: w.start, dur: w.dur, rateGbitS: w.rateGbitS }));
       lastInit = {
         v: 1,
@@ -267,6 +270,8 @@
         sites,
         windows,
         uplinkLabel: state.uplink.label,
+        jobs: state.jobs !== false && state.jobs !== undefined,
+        faultTotal: state.faultTotal || 0,
       };
       return lastInit;
     }
@@ -454,6 +459,15 @@
           w.u8(o.done ? 1 : 0);
           w.text(o.text || '');
         }
+        // Lander faults (the engineer's job).
+        const F = (state.faults || []).slice(0, 6);
+        w.u8(F.length);
+        for (const f of F) {
+          w.word(f.kind);
+          pos(f.x);
+          pos(f.z);
+          w.u8(clamp(num(f.fixT), 0, 1) * 255);
+        }
       }
 
       // Events, this step only.
@@ -611,6 +625,8 @@
               e.playerId = meta.playerId;
               e.name = meta.name;
               e.role = meta.role;
+              e.crewId = meta.crewId || null;
+              e.playerName = meta.playerName || null;
             }
           } else if (kind === 'boulder') {
             e.tLeft = r.f32();
@@ -640,6 +656,7 @@
                 e.fits = st.fits;
                 e.objective = !!st.objective;
                 e.instrument = st.instrument || null;
+                e.shadow = !!st.shadow;
               }
             } else if (kind === 'sample') {
               e.siteKind = r.word();
@@ -707,6 +724,13 @@
         const objectives = [];
         for (let i = 0; i < oc; i++) objectives.push({ id: r.word(), frac: r.u8() / 255, done: !!r.u8(), text: r.text() });
         slow.objectives = objectives;
+        const fc = r.u8();
+        const faults = [];
+        for (let i = 0; i < fc; i++) {
+          const kindF = r.word();
+          faults.push({ id: 'f' + kindF, kind: kindF, x: pos(), z: pos(), fixT: r.u8() / 255 });
+        }
+        slow.faults = faults;
       }
 
       const events = [];
@@ -756,6 +780,9 @@
         prompts: slow.prompts,
         progress: slow.progress || 0,
         objectives: slow.objectives || [],
+        faults: slow.faults || [],
+        jobs: !!init.jobs,
+        faultTotal: init.faultTotal || 0,
         loadout: { objective: init.objective || null },
         events,
       };

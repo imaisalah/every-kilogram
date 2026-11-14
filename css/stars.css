@@ -1,0 +1,46 @@
+/* The calm starfield behind every page (js/team/starfield.js; docs/TEAM-V3.md item 7).
+   Load after css/team.css (and css/team-phone.css on join.html). The layer sits at
+   z-index -1 behind everything; html.ek-stars-on makes the calm screens' flat navy
+   see-through so the sky shows. Views with their own 3D sky (flight, surface,
+   cabin) keep their opaque backgrounds. */
+
+.ek-stars {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+.ek-stars canvas {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  display: block;
+}
+
+html.ek-stars-on {
+  background: #070b22;
+}
+html.ek-stars-on body,
+html.ek-stars-on.tp-page body {
+  background: transparent;
+}
+
+/* The calm team screens: title, setup steps, briefing, build, review, results. */
+html.ek-stars-on .ts-screen {
+  background: transparent;
+}
+/* The bottom bar keeps a soft fade, so text never sits on bright stars. */
+html.ek-stars-on .ts-foot {
+  background: linear-gradient(to bottom, rgba(7, 11, 34, 0), rgba(7, 11, 34, 0.82) 45%);
+}
+/* Results: the sky with a soft glow at the top instead of a flat colour. */
+html.ek-stars-on .tf-deb {
+  background: radial-gradient(ellipse at 50% -10%, rgba(30, 42, 110, 0.6) 0%, rgba(12, 19, 48, 0.15) 60%, rgba(7, 11, 34, 0) 100%);
+}
+/* The phone / own-device screens. */
+html.ek-stars-on .tp-app {
+  background: transparent;
+}

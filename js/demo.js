@@ -58,7 +58,7 @@
     flightMs: 26000,
     cabinMs: 28000,
   };
-  const ORDER = ['lobby', 'brief', 'design', 'questions', 'lock', 'cabin', 'flight', 'landing', 'surface', 'ascent', 'debrief'];
+  const ORDER = ['lobby', 'brief', 'questions', 'define', 'design', 'lock', 'cabin', 'flight', 'landing', 'surface', 'ascent', 'debrief'];
 
   // ---------- Overlay (subtitles, cards, the tap ring) ----------
   const CSS = `
@@ -369,7 +369,7 @@ html.demo-ready, html.demo-ready * { cursor: auto !important; }
         const n = buildSteps().length;
         if (state().buildStep < n - 1) act({ type: 'stepTo', index: n - 1 });
         act({ type: 'forward' });
-      } else if (s.phase === 'brief' || s.phase === 'questions') act({ type: 'forward' });
+      } else if (s.phase === 'brief' || s.phase === 'questions' || s.phase === 'define') act({ type: 'forward' });
       else if (s.phase === 'lock') {
         act({ type: 'vote', yes: true });
         if (state().phase === 'lock') act({ type: 'next' });
@@ -558,6 +558,8 @@ html.demo-ready, html.demo-ready * { cursor: auto !important; }
       {
         at: 19400,
         run() {
+          advanceTo('questions');
+          act({ type: 'pick', requirement: M.requirement });
           advanceTo('design');
           goStep('orbit');
           sub(t('demo.v2.full.build', 'Build the ship one part at a time: up to three choices, each with plain pros and cons.'));
@@ -603,16 +605,14 @@ html.demo-ready, html.demo-ready * { cursor: auto !important; }
           goStep('rocket');
           sub(t('demo.v2.full.rocket', 'The rocket comes last. It has to lift everything you packed to that orbit.'));
           later(() => build('rocket', '*'), 1000);
-          later(() => advanceTo('questions'), 3000);
+          later(() => advanceTo('lock'), 3000);
         },
       },
       {
         at: 38000,
         run() {
-          advanceTo('questions');
-          sub(t('demo.v2.full.questions', 'Then the questions: what counts as success? KILO says how well your ship fits.'));
-          later(() => tap(`[data-req="${M.requirement}"]`, () => act({ type: 'pick', requirement: M.requirement })), 1400);
-          later(() => advanceTo('lock'), 3600);
+          advanceTo('lock');
+          sub(t('demo.v2.full.verify', 'Before launch, every mission requirement is checked against the design.'));
         },
       },
       {
@@ -741,6 +741,8 @@ html.demo-ready, html.demo-ready * { cursor: auto !important; }
       {
         at: 9000,
         run() {
+          advanceTo('questions');
+          act({ type: 'pick', requirement: M.requirement });
           advanceTo('design');
           goStep('orbit');
           sub(t('demo.v2.30.build', 'Build it one part at a time, with numbers from real NASA missions.'));
@@ -756,9 +758,8 @@ html.demo-ready, html.demo-ready * { cursor: auto !important; }
         at: 12600,
         run() {
           M.build.slice(4).forEach(([id, want]) => build(id, want, { quiet: true }));
-          advanceTo('questions');
-          sub(t('demo.v2.30.questions', 'Then decide what counts as success.'));
-          later(() => tap(`[data-req="${M.requirement}"]`, () => act({ type: 'pick', requirement: M.requirement }), { travel: 260 }), 200);
+          advanceTo('lock');
+          sub(t('demo.v2.30.verify', 'Every requirement is checked before launch.'));
         },
       },
       {

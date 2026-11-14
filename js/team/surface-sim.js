@@ -68,7 +68,23 @@
     acidDose: 0.9,
     rockfallHit: 18,
     winScienceFrac: 0.25, // share of ALL the science on the map a full success needs
+    repairS: 4, // the engineer fixes a lander fault in this long (hold Use at the fault)
+    repairR: 2.8,
+    panelsFaultFactor: 0.35, // dusty or slipped solar panels give this share of their power
+    botDecideS: 3, // with no person to choose, the crew's own plan goes after this long
   };
+
+  // docs/TEAM-V3.md item 5: on the surface each person does only their job. Each task
+  // belongs to one job; carrying samples, topping up, sheltering and going home are everyone's.
+  const TASK_JOB = {
+    scan: 'scientist', choose: 'scientist', plant: 'comms', align: 'comms', uplink: 'comms', boost: 'comms',
+    repair: 'engineer', patch: 'engineer', call: 'planner', route: 'planner',
+  };
+  // Who chooses what stays behind at the door: the scientist's samples, the planner's ascent plan.
+  const CHOOSERS = ['scientist', 'planner'];
+  // Which job each surface objective belongs to (null: the whole crew).
+  const OBJECTIVE_JOB = { scan: 'scientist', sample: 'scientist', dish: 'comms', send: 'comms', systems: 'engineer', science: null, home: 'planner', shadow: 'scientist', core: 'scientist' };
+  const FAULTS = { cadet: 1, engineer: 2, director: 3 };
 
   const DIFFICULTY = {
     cadet: { hazard: 0.7, drain: 0.85, bot: 1.1 },
@@ -105,7 +121,14 @@
   };
 
   // How each mission objective is weighed for the progress tracker.
-  const OBJECTIVE_WEIGHT = { scan: 0.25, sample: 0.15, dish: 0.1, send: 0.2, science: 0.15, home: 0.15 };
+  const OBJECTIVE_WEIGHT = { scan: 0.22, sample: 0.13, dish: 0.1, send: 0.18, science: 0.14, systems: 0.08, home: 0.15, shadow: 0.1, core: 0.1 };
+  // docs/TEAM-V3.md item 19: each signature mission asks something of its own down here.
+  // Moon: polar ice in a crater that never sees the Sun (bitter cold for suits, the night to
+  // survive). Mars: drill an ice core and bring it home, with dust on the solar panels.
+  const SIGNATURE = { moon: 'shadow', mars: 'core' };
+  // What goes wrong on each world's lander: Martian and Venusian dust or haze on the panels;
+  // the cold of the Moon and Europa trips the suit charger first.
+  const FAULT_KINDS = { mars: ['panels'], venus: ['panels'], moon: ['charger', 'panels'], europa: ['charger', 'panels'] };
 
   // ---------------------------------------------------------------- helpers
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -663,6 +686,8 @@
       extraction: { called: false, timer: 0, by: null, decision: 0, decided: false, reason: null, waiting: 0 },
       team: {},
       hazards: [], hazardPlan: [],
+      // Lander faults the engineer fixes (docs/TEAM-V3.md item 5), and the planner's marked site.
+      jobs: opts.jobs !== false, faults: [], faultPlan: [], faultTotal: 0, route: null,
       objectives: [], progress: 0,
       stats: newStats(),
     };
@@ -696,6 +721,18 @@
       });
     });
 
+    // The Moon's signature site: the objective site farthest from the lander lies in a crater
+    // that never sees the Sun. Suits run cold there, day or night.
+    if (SIGNATURE[world] === 'shadow') {
+      let far = null;
+      for (const e of S.entities) if (e.kind === 'site' && e.objective && e.fits && (!far || dist(e, L) > dist(far, L))) far = e;
+      if (!far) for (const e of S.entities) if (e.kind === 'site' && e.objective && (!far || dist(e, L) > dist(far, L))) far = e;
+      if (far) {
+        far.shadow = true;
+        far.label = 'Permanently shadowed crater';
+      }
+    }
+
     // Spare canisters in the caves, a short detour from the work.
     gen.caves.forEach((c, i) => {
       spawn(S, 'pickup', { x: c.x, z: c.z, r: 0.8, item: i % 2 ? 'energy' : 'o2', state: 'idle' });
@@ -704,18 +741,23 @@
     list.forEach((p, i) => {
       const a = (i / list.length) * Math.PI * 2;
       spawn(S, 'astronaut', {
-        id: 'a' + i, slot: i, playerId: String(p.id), name: p.name, role: roles[i], isBot: !!p.bot,
+        id: 'a' + i, slot: i, playerId: String(p.id), name: String(p.name).slice(0, 40), role: roles[i], isBot: !!p.bot,
+        // The character picked in setup (js/team/crew.js) and the person playing it, when known.
+        crewId: p.crewId ? String(p.crewId).slice(0, 40) : null, playerName: p.playerName ? String(p.playerName).slice(0, 40) : null,
         x: L.x + Math.cos(a) * 5, z: L.z + Math.sin(a) * 5, r: 0.7, hp: TUNE.suitMax, maxHp: TUNE.suitMax, state: 'idle',
         vx: 0, vz: 0, o2: TUNE.o2Tank, energy: TUNE.energyMax, weapon: null, weapons: [],
         carrying: null, mounted: null, downed: false, downT: 0, reviveT: 0, dead: false, respawnT: 0, aboard: false, useT: 0, useKind: null,
         returning: null, restT: 0, abilityCd: 0, abilityHold: 0, overclockT: 0, slowT: 0, sprinting: false,
-        tally: { scans: 0, carried: 0, dropped: 0, returns: 0 }, prev: { use: false, ability: false },
+        tally: { scans: 0, carried: 0, dropped: 0, returns: 0, plants: 0, aligns: 0, repairs: 0, patches: 0, routes: 0, calls: 0, boosts: 0, overclocks: 0, heldS: 0 }, prev: { use: false, ability: false },
         bot: p.bot ? { task: null, think: 0, stuckT: 0, lastX: 0, lastZ: 0 } : null,
       });
     });
 
     S.uplink = planUplink(S);
     S.hazardPlan = planHazards(S);
+    S.faultPlan = planFaults(S);
+    S.faultTotal = S.jobs ? S.faultPlan.length : 0;
+    if (!S.jobs) S.faultPlan = [];
     S.objectives = objectivesOf(S, buildViews(S));
     return S;
   }
@@ -730,6 +772,7 @@
       gbitSent: 0, valueSent: 0, windows: [], dishDowns: 0, plantT: -1,
       samplesTaken: 0, samplesDelivered: 0, samplesLeft: 0, carriedSamples: 0,
       scansBlocked: {}, waitS: 0, boilKg: 0,
+      faultsSeen: 0, faultsFixed: 0, faultS: { panels: 0, charger: 0 },
     };
   }
 
@@ -772,6 +815,51 @@
       if (plan[i].t < minT) plan[i].t = minT;
     }
     return plan.filter((p) => p.t < S.T - TUNE.autoExtractLeftS - 6);
+  }
+
+  // Lander faults, planned from the seed like the weather. Each sits at a fixed spot on the
+  // lander's hull: dusty or slipped solar panels (less power) or a tripped suit charger (no
+  // recharging) until the engineer holds Use there.
+  function planFaults(S) {
+    const rng = mulberry(hash32('fault|' + S.seed + '|' + S.world));
+    const n = FAULTS[S.difficulty] || 2;
+    const L = S.map.lander;
+    const base = FAULT_KINDS[S.world] || ['panels', 'charger'];
+    const kinds = base.length > 1 && rng() < 0.5 ? base.slice().reverse() : base.slice();
+    const spots = { panels: { x: L.x + 4.8, z: L.z + 0.6 }, charger: { x: L.x - 4.6, z: L.z - 0.8 } };
+    const plan = [];
+    for (let i = 0; i < n; i++) {
+      const kind = kinds[i % kinds.length];
+      const t = S.T * (0.2 + 0.48 * ((i + 0.25 + rng() * 0.5) / n));
+      plan.push({ kind, t, x: spots[kind].x, z: spots[kind].z });
+    }
+    return plan.filter((f) => f.t < S.T - TUNE.autoExtractLeftS - 30);
+  }
+
+  function updateFaults(S, V) {
+    while (S.faultPlan.length && S.t >= S.faultPlan[0].t) {
+      const f = S.faultPlan.shift();
+      // One fault of a kind at a time: a second one on the same part just adds to the first.
+      if (S.faults.some((x) => x.kind === f.kind)) continue;
+      S.faults.push({ id: 'f' + S.nextId++, kind: f.kind, x: f.x, z: f.z, fixT: 0, since: S.t });
+      S.stats.faultsSeen++;
+      emit(S, 'fault', f.x, f.z, { kind: f.kind });
+    }
+    for (const f of S.faults) S.stats.faultS[f.kind] = (S.stats.faultS[f.kind] || 0) + TICK;
+  }
+
+  const faultOn = (S, kind) => S.faults.some((f) => f.kind === kind);
+
+  // ---------------------------------------------------------------- jobs
+  // May this astronaut do this task? Their job, or nobody holding that job is still out there
+  // (an empty seat, or the one who has it is aboard for good), or the jobs rule is off.
+  function owns(S, V, p, task) {
+    if (!S.jobs) return true;
+    const job = TASK_JOB[task];
+    if (!job) return true;
+    const jobs = task === 'choose' ? CHOOSERS : [job];
+    if (jobs.indexOf(p.role) >= 0) return true;
+    return !V.players.some((q) => jobs.indexOf(q.role) >= 0 && !q.aboard);
   }
 
   // ---------------------------------------------------------------- fixtures
@@ -916,7 +1004,8 @@
     const ld = S.loadout;
     const flux = WORLDS[S.world].flux / 1361;
     const stormed = hazardActive(S, 'storm') ? 0.25 : hazardActive(S, 'acid') ? 0.6 : 1;
-    const solar = ld.power.solarW * flux * S.sun.elevation * stormed + ld.power.rtgW;
+    const panels = faultOn(S, 'panels') ? TUNE.panelsFaultFactor : 1;
+    const solar = ld.power.solarW * flux * S.sun.elevation * stormed * panels + ld.power.rtgW;
     B.solarW = solar;
 
     const needCharge = V.players.some((p) => !p.aboard && dist(p, V.lander) < TUNE.landerRadius && p.energy < TUNE.energyMax - 1);
@@ -935,7 +1024,7 @@
     // Shedding order when power runs short: the charger goes first, then the lights, then the heat.
     const heat = !S.sun.up && shed(TUNE.loadHeatW);
     const lights = night && shed(TUNE.loadLightsW);
-    const charger = needCharge && shed(TUNE.loadChargerW);
+    const charger = needCharge && !faultOn(S, 'charger') && shed(TUNE.loadChargerW);
 
     B.battery = clamp(B.battery + (solar - load) * hrs, 0, B.batteryMax);
     B.loadW = load;
@@ -1042,8 +1131,10 @@
       } else if (U.planted) {
         w.planted = true;
         dish.state = 'transmit';
-        const holders = V.players.filter((p) => !p.aboard && !p.returning && dist(p, dish) < TUNE.dishHoldR);
-        const hold = holders.length === 0 ? 0.35 : holders.length === 1 ? 0.8 : 1;
+        const holders = V.players.filter((p) => !p.aboard && !p.returning && dist(p, dish) < TUNE.dishHoldR && owns(S, V, p, 'uplink'));
+        // Jobs: Communications runs the uplink alone, at the full rate a pair used to manage.
+        const hold = holders.length === 0 ? 0.35 : holders.length === 1 && !S.jobs ? 0.8 : 1;
+        for (const p of holders) p.tally.heldS += TICK;
         const commsBonus = holders.some((p) => p.role === 'comms') ? 1.25 : 1;
         const boost = U.boostT > 0 ? 1.4 : 1;
         if (holders.length) w.heldS += TICK;
@@ -1316,7 +1407,8 @@
     // Air, battery, cold.
     const nearLander = dist(p, V.lander) < TUNE.landerRadius;
     const nearLight = S.base.lightsOn && dist(p, V.lander) < S.base.lightR;
-    const cold = !S.sun.up && !nearLight;
+    const inShadow = S.world === 'moon' && V.sites.some((s) => s.shadow && dist(s, p) < s.r + 3);
+    const cold = (!S.sun.up && !nearLight) || inShadow;
     const drain = TUNE.o2Drain * S.diff.drain * (cold ? 1.25 : 1) * TICK;
     if (!nearLander) {
       p.o2 = Math.max(0, p.o2 - drain);
@@ -1345,7 +1437,7 @@
     p.prev.use = use;
     p.prev.ability = !!inp.ability;
 
-    if (inp.jettison && S.stage === 'extraction' && jettison(S, V, inp.jettison)) p.tally.dropped++;
+    if (inp.jettison && S.stage === 'extraction' && owns(S, V, p, 'choose') && jettison(S, V, String(inp.jettison))) p.tally.dropped++;
 
     // Movement.
     const mx = clamp(+inp.moveX || 0, -1, 1);
@@ -1411,11 +1503,33 @@
       }
     }
 
-    // Science sites.
+    // Lander faults: the engineer's.
+    if (S.faults.length && owns(S, V, p, 'repair')) {
+      const f = S.faults.find((x) => dist(x, p) < TUNE.repairR);
+      if (f) {
+        S.prompts[p.playerId] = 'repair';
+        if (use) {
+          p.useKind = 'repair';
+          p.state = 'repair';
+          f.fixT += TICK / TUNE.repairS;
+          if (f.fixT >= 1) {
+            S.faults = S.faults.filter((x) => x !== f);
+            S.stats.faultsFixed++;
+            p.tally.repairs++;
+            emit(S, 'faultFixed', f.x, f.z, { kind: f.kind, by: p.id });
+          }
+          return;
+        }
+      }
+    }
+
+    // Science sites: the scientist's.
     let site = null;
-    for (const s of V.sites) {
-      if (s.done) continue;
-      if (dist(s, p) < s.r) site = s;
+    if (owns(S, V, p, 'scan')) {
+      for (const s of V.sites) {
+        if (s.done) continue;
+        if (dist(s, p) < s.r) site = s;
+      }
     }
     if (site) {
       if (!site.fits) {
@@ -1433,7 +1547,7 @@
     // Dish.
     const dish = V.dish;
     const dishD = dist(p, dish);
-    if (dishD < 4.5) {
+    if (dishD < 4.5 && owns(S, V, p, 'plant')) {
       if (!dish.planted) {
         S.prompts[p.playerId] = 'plant';
         if (use) {
@@ -1442,6 +1556,7 @@
           const need = p.role === 'comms' ? TUNE.plantS.comms : TUNE.plantS.other;
           dish.plantT += TICK / need;
           if (dish.plantT >= 1) {
+            p.tally.plants++;
             dish.planted = true;
             dish.align = 1;
             dish.plantT = 0;
@@ -1456,6 +1571,7 @@
           p.useKind = 'align';
           p.state = 'repair';
           dish.align = Math.min(1, dish.align + (p.role === 'comms' ? 0.5 : 0.2) * TICK);
+          if (dish.align >= 0.99) p.tally.aligns++;
           return;
         }
       }
@@ -1482,6 +1598,7 @@
       site.done = true;
       site.state = 'done';
       p.tally.scans++;
+      if (S.route && S.route.siteId === site.id) S.route = null;
       emit(S, 'scanDone', site.x, site.z, { siteId: site.id, by: p.id });
       // The scan leaves a physical sample. A drill pulls a heavy, valuable core.
       if (!site.sampleTaken) {
@@ -1502,13 +1619,23 @@
     if (p.role === 'planner') {
       if (inp.ability) {
         p.abilityHold += TICK;
-        if (p.abilityHold >= 1.2 && !S.extraction.called && S.t > 30 && S.stage === 'play') callExtraction(S, V, p.id);
+        if (p.abilityHold >= 1.2 && !S.extraction.called && S.t > 30 && S.stage === 'play') {
+          callExtraction(S, V, p.id);
+          p.tally.calls++;
+        }
       } else {
         if (p.abilityHold > 0 && p.abilityHold < 1.2 && p.abilityCd <= 0) {
           p.abilityCd = 3;
-          const ping = { id: 'pg' + S.nextId++, x: p.x + Math.cos(p.heading) * 18, z: p.z + Math.sin(p.heading) * 18, by: p.id, tLeft: 8 };
+          // The route: a tap marks the site you face (or the one nearest the ping) for the scientist.
+          const site = routeSite(S, V, p);
+          const at = site || { x: p.x + Math.cos(p.heading) * 18, z: p.z + Math.sin(p.heading) * 18 };
+          const ping = { id: 'pg' + S.nextId++, x: at.x, z: at.z, by: p.id, tLeft: 8 };
           S.pings.push(ping);
-          emit(S, 'ping', ping.x, ping.z, { id: ping.id, by: p.id });
+          if (site) {
+            S.route = { siteId: site.id, by: p.id, t: S.t };
+            p.tally.routes++;
+          }
+          emit(S, 'ping', ping.x, ping.z, { id: ping.id, by: p.id, site: site ? site.id : null });
         }
         p.abilityHold = 0;
       }
@@ -1525,22 +1652,53 @@
       if (best && best.hp < best.maxHp - 5) {
         best.hp = Math.min(best.maxHp, best.hp + 35);
         p.abilityCd = 16;
+        p.tally.patches++;
         emit(S, 'suitPatched', best.x, best.z, { id: best.id, by: p.id });
       }
     } else if (p.role === 'scientist') {
       p.overclockT = 8;
       p.abilityCd = 18;
+      p.tally.overclocks++;
       emit(S, 'overclock', p.x, p.z, { by: p.id });
     } else if (p.role === 'comms') {
       if (dist(p, V.dish) < TUNE.dishHoldR && S.uplink.open >= 0) {
         S.uplink.boostT = 8;
         p.abilityCd = 20;
+        p.tally.boosts++;
         emit(S, 'uplinkBoost', V.dish.x, V.dish.z, { by: p.id });
       } else if (V.dish.planted && V.dish.align < 0.99 && dist(p, V.dish) < 6) {
         V.dish.align = 1;
         p.abilityCd = 12;
+        p.tally.aligns++;
       }
     }
+  }
+
+  // The unscanned site a planner is facing (within 20 degrees), or the one nearest the ping.
+  function routeSite(S, V, p) {
+    let best = null;
+    let bestA = 0.35;
+    const px = p.x + Math.cos(p.heading) * 18;
+    const pz = p.z + Math.sin(p.heading) * 18;
+    let near = null;
+    let nd = 22;
+    for (const s of V.sites) {
+      if (s.done || !s.fits) continue;
+      const d = dist(p, s);
+      if (d < 3) continue;
+      let a = Math.abs(Math.atan2(s.z - p.z, s.x - p.x) - p.heading);
+      if (a > Math.PI) a = Math.PI * 2 - a;
+      if (a < bestA) {
+        bestA = a;
+        best = s;
+      }
+      const dp = len(s.x - px, s.z - pz);
+      if (dp < nd) {
+        nd = dp;
+        near = s;
+      }
+    }
+    return best || near;
   }
 
   function callExtraction(S, V, by) {
@@ -1584,6 +1742,13 @@
       return;
     }
 
+    // The engineer keeps the lander running.
+    if (S.faults.length && owns(S, V, p, 'repair')) {
+      const f = S.faults[0];
+      b.task = { type: 'repair', target: f.id, x: f.x, z: f.z };
+      return;
+    }
+
     const dishPlanted = V.dish.planted;
     const openSoon = S.uplink.open >= 0 || (S.uplink.nextIn >= 0 && S.uplink.nextIn < 9);
     const hasData = S.recorder.usedGbit > 2;
@@ -1591,7 +1756,7 @@
     // Plant the dish in good time. The comms bot is on point; anyone covers if comms is busy.
     if (!dishPlanted && (openSoon || S.t > 28) && S.uplink.windows.length) {
       const comms = V.players.find((q) => q.role === 'comms' && q.isBot && !q.aboard && !q.returning);
-      if (p.role === 'comms' || !comms) {
+      if (S.jobs ? owns(S, V, p, 'plant') : p.role === 'comms' || !comms) {
         b.task = { type: 'plant', x: V.dish.x, z: V.dish.z };
         return;
       }
@@ -1600,7 +1765,7 @@
     if (S.uplink.open >= 0 && dishPlanted && (hasData || S.uplink.windows[S.uplink.open].sentGbit > 0)) {
       // Comms always holds the ring; one more helper is plenty.
       const holding = V.players.filter((q) => q !== p && q.bot && q.bot.task && q.bot.task.type === 'hold').length;
-      if (p.role === 'comms' || holding < 1 || (V.dish.align < 0.6 && holding < 2)) {
+      if (S.jobs ? owns(S, V, p, 'uplink') : p.role === 'comms' || holding < 1 || (V.dish.align < 0.6 && holding < 2)) {
         b.task = { type: 'hold', x: V.dish.x, z: V.dish.z };
         return;
       }
@@ -1624,7 +1789,7 @@
     }
 
     // Stage near the dish just before a window with data to send.
-    if (S.uplink.nextIn >= 0 && S.uplink.nextIn < 5 && hasData && S.uplink.planted && p.role === 'comms') {
+    if (S.uplink.nextIn >= 0 && S.uplink.nextIn < 5 && hasData && S.uplink.planted && (S.jobs ? owns(S, V, p, 'uplink') : p.role === 'comms')) {
       b.task = { type: 'hold', x: V.dish.x, z: V.dish.z };
       return;
     }
@@ -1632,13 +1797,13 @@
     // Carry samples home.
     const loose = V.samples.filter((s) => !s.gone && !s.heldBy);
     const s = loose.length ? nearestLooseSample(S, V, p, 90, p.id) : null;
-    if (s && (p.role !== 'scientist' || !scanTarget(S, V, p))) {
+    if (s && (p.role !== 'scientist' || !owns(S, V, p, 'scan') || !scanTarget(S, V, p))) {
       b.task = { type: 'fetch', target: s.id };
       return;
     }
 
-    // Science: everyone who can scans; the scientist takes the best site.
-    const site = scanTarget(S, V, p);
+    // Science: the scientist (or, without the jobs rule, everyone who can) takes the best site.
+    const site = owns(S, V, p, 'scan') ? scanTarget(S, V, p) : null;
     if (site) {
       b.task = { type: 'scan', target: site.id, x: site.x, z: site.z };
       return;
@@ -1693,6 +1858,7 @@
       }
       let score = -dist(p, s) * 0.08;
       if (s.objective) score += 3;
+      if (S.route && S.route.siteId === s.id) score += 30; // the planner marked it: it comes first
       score += s.scanned * 4;
       const others = V.players.filter((q) => q !== p && q.bot && q.bot.task && q.bot.task.target === s.id).length;
       if (p.role !== 'scientist') score -= 2.5 * others;
@@ -1793,6 +1959,19 @@
         }
         break;
       }
+      case 'repair': {
+        if (!S.faults.some((f) => f.id === t.target)) {
+          b.task = null;
+          break;
+        }
+        const d = steerTo(S, p, t.x, t.z, out);
+        if (d < TUNE.repairR - 1) {
+          out.moveX = 0;
+          out.moveY = 0;
+          out.use = true;
+        }
+        break;
+      }
       case 'escort': {
         const q = byId(S, t.target);
         if (!q || q.aboard) {
@@ -1823,10 +2002,7 @@
     // With people in the crew it waits for them: they may still be exploring.
     const allBots = V.players.every((q) => q.isBot);
     if (p.role === 'planner' && S.stage === 'play' && S.t > 60 && (allBots || S.T - S.t < 70)) {
-      const unfinished = V.sites.some((s) => s.fits && !s.done);
-      const loose = V.samples.some((s) => !s.gone);
-      const rec = S.recorder.usedGbit > 3 && S.uplink.windows.some((w) => w.state !== 'done');
-      if (!unfinished && !loose && !rec) out.ability = true;
+      if (workDone(S, V)) out.ability = true;
     }
     // Step out from under a marked rockfall.
     for (const h of S.hazards) {
@@ -1877,10 +2053,29 @@
       { id: 'dish', frac: V.dish.planted ? 1 : clamp(V.dish.plantT || 0, 0, 0.99), done: !!V.dish.planted },
       { id: 'send', kind, frac: clamp(sentObj / sendTarget, 0, 1), done: sentObj >= sendTarget - 1e-6 },
       { id: 'science', frac: sciFrac, done: sciFrac >= 1 - 1e-6, pct: Math.round(TUNE.winScienceFrac * 100) },
-      { id: 'home', frac: home ? 1 : 0, done: home },
     ];
+    // The signature objective of this world (item 19).
+    if (SIGNATURE[S.world] === 'shadow') {
+      const sh = V.sites.find((s) => s.shadow);
+      if (sh) list.push({ id: 'shadow', kind, frac: sh.done ? 1 : clamp(sh.scanned || 0, 0, 0.99), done: !!sh.done });
+    } else if (SIGNATURE[S.world] === 'core') {
+      const core = S.ascent.rack.some((r) => r.core && r.siteKind === kind) && !lost;
+      const loose = V.samples.some((x) => x.core && x.siteKind === kind && !x.gone);
+      list.push({ id: 'core', kind, frac: core ? 1 : loose ? 0.5 : 0, done: core });
+    }
+    // The engineer's: every lander fault fixed (none planned, or the jobs rule off: nothing to do).
+    if (S.jobs && S.faultTotal > 0) {
+      // Once the mission is over, only the faults that really happened count.
+      const of = S.over ? S.stats.faultsSeen || 0 : S.faultTotal;
+      const fixed = (S.stats.faultsFixed || 0) + (S.faults ? S.faults.reduce((n, f) => n + f.fixT * 0.9, 0) : 0);
+      const n = S.stats.faultsFixed || 0;
+      list.push({ id: 'systems', n, of, frac: of > 0 ? clamp(fixed / of, 0, 1) : 1, done: n >= of });
+    }
+    list.push({ id: 'home', frac: home ? 1 : 0, done: home });
+    const wsum = list.reduce((n, o) => n + OBJECTIVE_WEIGHT[o.id], 0);
     for (const o of list) {
-      o.weight = OBJECTIVE_WEIGHT[o.id];
+      o.weight = OBJECTIVE_WEIGHT[o.id] / wsum;
+      o.job = OBJECTIVE_JOB[o.id] || null;
       o.text = objectiveText(o);
       o.key = 'team.surface.goal.' + o.id;
     }
@@ -1894,6 +2089,9 @@
     if (o.id === 'dish') return tr('team.surface.goal.dish', STRINGS['team.surface.goal.dish']);
     if (o.id === 'send') return tr('team.surface.goal.send', STRINGS['team.surface.goal.send'], { kind: k });
     if (o.id === 'science') return tr('team.surface.goal.science', STRINGS['team.surface.goal.science'], { pct: o.pct });
+    if (o.id === 'systems') return tr('team.surface.goal.systems', STRINGS['team.surface.goal.systems'], { n: o.n, of: o.of });
+    if (o.id === 'shadow') return tr('team.surface.goal.shadow', STRINGS['team.surface.goal.shadow'], { kind: k });
+    if (o.id === 'core') return tr('team.surface.goal.core', STRINGS['team.surface.goal.core'], { kind: k });
     return tr('team.surface.goal.home', STRINGS['team.surface.goal.home']);
   }
 
@@ -1993,7 +2191,7 @@
     if (S.stage === 'play' && S.t > 60) {
       const people = V.players.filter((p) => !p.isBot);
       const home = people.length && people.every((p) => atDoor(V, p) && !p.returning && !p.carrying);
-      const done = home && !V.sites.some((x) => x.fits && !x.done) && !V.samples.some((x) => !x.gone) && !(S.recorder.usedGbit > 3 && S.uplink.windows.some((w) => w.state !== 'done'));
+      const done = home && workDone(S, V);
       S.extraction.doorT = done ? (S.extraction.doorT || 0) + TICK : 0;
       if (S.extraction.doorT >= 6) callExtraction(S, V, 'crew');
     }
@@ -2025,7 +2223,10 @@
     const X = S.extraction;
     if (!X.decided && S.ascent.overKg > 0.5 && S.ascent.rack.length) {
       X.decided = true;
-      X.decision = TUNE.decisionS;
+      // A person who may choose gets the full time; a crew of bots goes with its own plan quickly.
+      const person = V.players.some((q) => !q.isBot && owns(S, V, q, 'choose'));
+      X.decision = person ? TUNE.decisionS : TUNE.botDecideS;
+      X.byPeople = person;
       X.reason = reason;
       emit(S, 'decisionOpen', V.lander.x, V.lander.z, { overKg: S.ascent.overKg });
       return;
@@ -2036,7 +2237,7 @@
   function decisionTick(S, V, inputs) {
     for (const p of V.players) {
       const inp = p.isBot ? null : inputs[p.playerId];
-      if (!inp || !inp.jettison) continue;
+      if (!inp || !inp.jettison || !owns(S, V, p, 'choose')) continue;
       for (const id of Array.isArray(inp.jettison) ? inp.jettison : [inp.jettison]) if (jettison(S, V, String(id))) p.tally.dropped++;
     }
     S.extraction.decision = S.ascent.overKg > 0.5 ? S.extraction.decision - TICK : 0;
@@ -2080,6 +2281,8 @@
 
     updateSun(S);
     updateHazards(S, V);
+    if (S.jobs && S.stage === 'play') updateFaults(S, V);
+    else if (S.jobs) for (const f of S.faults) S.stats.faultS[f.kind] = (S.stats.faultS[f.kind] || 0) + TICK;
     for (const p of V.players) {
       const inp = p.isBot ? botInput(S, V, p) : inputs[p.playerId] || blankInput();
       control(S, V, p, inp);
@@ -2101,6 +2304,9 @@
   function step(S, inputs, dt) {
     if (!S) return S;
     S.events = [];
+    if (!S.faults) S.faults = [];
+    if (!S.faultPlan) S.faultPlan = [];
+    if (!S.stats.faultS) Object.assign(S.stats, { faultsSeen: 0, faultsFixed: 0, faultS: { panels: 0, charger: 0 } });
     if (S.over) return S;
     const d = typeof dt === 'number' && dt > 0 ? dt : TICK;
     S.acc += d;
@@ -2121,6 +2327,24 @@
     'team.surface.goal.send': 'Send the {kind} data home',
     'team.surface.goal.science': 'Bring home {pct}% of the science on the map',
     'team.surface.goal.home': 'Lift off with the crew',
+    'team.surface.goal.systems': 'Keep the lander running: fix the faults ({n} of {of})',
+    'team.surface.goal.shadow': 'Scan the {kind} in the permanently shadowed crater',
+    'team.surface.goal.core': 'Bring home a drilled {kind} core',
+    'team.surface.fact.shadow_done': 'The crew scanned the ice in the permanently shadowed crater.',
+    'team.surface.why.shadow_done': 'Water ice survives only where the Sun never shines; suits run very cold there.',
+    'team.surface.fact.shadow_missed': 'Nobody scanned the permanently shadowed crater.',
+    'team.surface.why.shadow_missed': 'It was the farthest site and the coldest place on the map: plan air and suit power for it.',
+    'team.surface.fact.core_home': 'A drilled {kind} core is coming home.',
+    'team.surface.why.core_home': 'A core keeps the layers in order: the best record of how the ice was laid down.',
+    'team.surface.fact.core_missed': 'No drilled {kind} core came home.',
+    'team.surface.why.core_nodrill': 'No drill was packed: scoops only skim the surface.',
+    'team.surface.why.core_left': 'The cores were left on the ground or thrown overboard.',
+    'team.surface.fact.faults_open': 'Lander faults left unfixed for {s} s ({what}).',
+    'team.surface.why.faults_open': 'Dusty panels give a third of their power; a tripped charger cannot recharge suits. The engineer fixes them at the lander.',
+    'team.surface.fact.faults_fixed': 'The engineer fixed all {n} lander faults.',
+    'team.surface.why.faults_fixed': 'Power and suit charging stayed up.',
+    'team.surface.fault.panels': 'dusty solar panels',
+    'team.surface.fault.charger': 'tripped suit charger',
     'team.surface.fact.base_dark': 'The base ran short of power for {s} s (first at {at} s).',
     'team.surface.why.base_dark': '{battery} carries the night heaters and lights for about {cover} s without sun; {solar} gives {watts} W at noon on {world}.',
     'team.surface.fact.base_lit': 'The base stayed warm and lit through the night.',
@@ -2178,7 +2402,8 @@
   const tr = (key, english, params) => (SMD.t ? SMD.t(key, english, params) : fillText(english, params));
   const label = (group, id, english) => tr('team.surface.' + group + '.' + id, english);
 
-  // The one line a HUD shows: what to do next, where.
+  // The one line a HUD shows: what to do next, where. With the jobs rule, only your job's
+  // tasks (plus what everyone does: carry samples, top up, shelter, go home).
   function nextGoal(S, p) {
     const V = buildViews(S);
     const L = V.lander;
@@ -2190,34 +2415,94 @@
     if (shelter && p && !sheltered(S, V, p)) return { id: 'shelter', target: shelterSpot(S, V, p) };
     if (p && p.carrying) return { id: 'deliver', target: L };
     if (p && (p.o2 < 22 || p.energy < 15)) return { id: 'resupply', target: L };
+    if (S.jobs && p && p.role) return jobGoal(S, V, p);
     if (S.uplink.open >= 0 && !V.dish.planted) return { id: 'plant', target: V.dish };
     if (S.uplink.open >= 0 && S.recorder.usedGbit > 1) return { id: 'hold', target: V.dish };
     if (!V.dish.planted && S.uplink.windows.length && (S.uplink.nextIn < 25 || S.t > 60)) return { id: 'plant', target: V.dish };
-    const from = p || L;
+    const site = bestSite(S, V, p || L);
+    const sample = nearestSample(V, p || L);
+    if (sample && (!site || dist(p || L, sample) < dist(p || L, site) - (site.objective ? 25 : 0))) return { id: 'sample', target: sample };
+    if (site) return { id: 'scan', target: site };
+    if (S.recorder.usedGbit > 1 && S.uplink.windows.some((w) => w.state === 'upcoming')) return { id: 'wait', target: V.dish };
+    return { id: 'home', target: L };
+  }
+
+  function bestSite(S, V, from) {
     let site = null;
     let bd = Infinity;
     for (const s of V.sites) {
       if (s.done || !s.fits) continue;
-      const d = dist(from, s) - (s.objective ? 25 : 0);
+      const d = dist(from, s) - (s.objective ? 25 : 0) - (S.route && S.route.siteId === s.id ? 1000 : 0);
       if (d < bd) {
         bd = d;
         site = s;
       }
     }
+    return site;
+  }
+
+  function nearestSample(V, from) {
     let sample = null;
     let sd = Infinity;
     for (const s of V.samples) {
-      if (s.heldBy) continue;
+      if (s.heldBy || s.gone) continue;
       const d = dist(from, s);
       if (d < sd) {
         sd = d;
         sample = s;
       }
     }
-    if (sample && (!site || sd < bd)) return { id: 'sample', target: sample };
-    if (site) return { id: 'scan', target: site };
-    if (S.recorder.usedGbit > 1 && S.uplink.windows.some((w) => w.state === 'upcoming')) return { id: 'wait', target: V.dish };
-    return { id: 'home', target: L };
+    return sample;
+  }
+
+  // Everything is done that the clock still allows: time to call the crew home.
+  function workDone(S, V) {
+    const unfinished = V.sites.some((s) => s.fits && !s.done);
+    const loose = V.samples.some((s) => !s.gone);
+    const unsent = S.recorder.usedGbit > 3 && S.uplink.windows.some((w) => w.state !== 'done');
+    return !unfinished && !loose && !unsent && !(S.faults && S.faults.length);
+  }
+
+  function jobGoal(S, V, p) {
+    const L = V.lander;
+    const U = S.uplink;
+    const dish = V.dish;
+    const sample = nearestSample(V, p);
+    const help = sample && dist(p, sample) < 60 ? { id: 'sample', target: sample } : null;
+    switch (p.role) {
+      case 'comms':
+        if (!dish.planted) return { id: 'plant', target: dish };
+        if (dish.align < 0.9) return { id: 'align', target: dish };
+        if (U.open >= 0) return { id: 'hold', target: dish };
+        if (U.nextIn >= 0 && U.nextIn < 12 && S.recorder.usedGbit > 1) return { id: 'wait', target: dish };
+        return help || { id: U.windows.some((w) => w.state === 'upcoming') ? 'wait' : 'home', target: U.windows.some((w) => w.state === 'upcoming') ? dish : L };
+      case 'scientist': {
+        const site = bestSite(S, V, p);
+        if (site) return { id: 'scan', target: site };
+        return help || { id: 'home', target: L };
+      }
+      case 'engineer': {
+        if (S.faults.length) {
+          let f = S.faults[0];
+          for (const x of S.faults) if (dist(p, x) < dist(p, f)) f = x;
+          return { id: 'repair', target: f };
+        }
+        const worn = V.players.filter((q) => q !== p && !q.aboard && !q.returning && q.restT <= 0 && q.hp < 60 && dist(p, q) < 45).sort((a, b) => a.hp - b.hp)[0];
+        if (worn) return { id: 'patch', target: worn };
+        return help || { id: 'systems', target: L };
+      }
+      case 'planner': {
+        if (S.stage === 'play' && S.t > 30 && (workDone(S, V) || S.T - S.t < 70)) return { id: 'call', target: L };
+        const routed = S.route ? V.sites.find((s) => s.id === S.route.siteId && !s.done) : null;
+        if (!routed) {
+          const site = bestSite(S, V, V.players.find((q) => q.role === 'scientist' && !q.aboard) || p);
+          if (site) return { id: 'route', target: site };
+        }
+        return help || { id: 'watch', target: L };
+      }
+      default:
+        return { id: 'home', target: L };
+    }
   }
 
   function statusFor(S, playerId) {
@@ -2236,8 +2521,9 @@
       progress: Math.round((S.progress || 0) * 100), goal: goal.id,
       goalDistM: goal.target ? Math.round(dist(p, goal.target)) : 0,
       // The sample rack, only while it can still change: phones choose what stays.
-      rack: S.stage === 'extraction' ? { liftKg: Math.round(S.ascent.liftKg), loadedKg: Math.round(S.ascent.loadedKg), objective: S.loadout.objective || null, items: S.ascent.rack.map((r) => ({ id: r.id, kind: r.siteKind, kg: Math.round(r.massKg), value: Math.round(r.value), core: !!r.core })), dropped: S.ascent.jettisoned.length } : null,
+      rack: S.stage === 'extraction' && owns(S, buildViews(S), p, 'choose') ? { liftKg: Math.round(S.ascent.liftKg), loadedKg: Math.round(S.ascent.loadedKg), objective: S.loadout.objective || null, items: S.ascent.rack.map((r) => ({ id: r.id, kind: r.siteKind, kg: Math.round(r.massKg), value: Math.round(r.value), core: !!r.core })), dropped: S.ascent.jettisoned.length } : null,
       decision: S.extraction.decision > 0 ? Math.ceil(S.extraction.decision) : 0,
+      job: p.role, crewId: p.crewId || null, name: p.name,
     };
   }
 
@@ -2252,8 +2538,10 @@
     const R = S.recorder;
     const out = S.outcome;
     const extracted = out === 'extracted';
-    const aboard = players.filter((p) => p.aboard).length;
-    const lost = extracted ? players.length - aboard : 0;
+    // Only a crew that lifted off is home: a stranded crew brings nobody back, however many
+    // of them sat in the cabin when the ascent window closed (docs/TEAM-V3.md item 12).
+    const aboard = extracted ? players.filter((p) => p.aboard).length : 0;
+    const lost = extracted ? players.length - aboard : S.over ? players.length : 0;
     const returned = extracted ? A.rack : [];
     const valueReturned = returned.reduce((s, r) => s + r.value, 0);
     const massReturned = returned.reduce((s, r) => s + r.massKg, 0);
@@ -2348,6 +2636,27 @@
     }
     if (st.radiationS > 6) fact('radiation', 'bad', 'time', st.radiationS, { s: R0(st.radiationS), warn: 12 });
 
+    // The signature objective (item 19)
+    if (S.over && SIGNATURE[S.world] === 'shadow') {
+      const sh = sites.find((x) => x.shadow);
+      if (sh) fact(sh.done ? 'shadow_done' : 'shadow_missed', sh.done ? 'good' : 'bad', sh.done ? 'instruments' : 'spareO2', sh.done ? 0 : 1, {});
+    } else if (S.over && SIGNATURE[S.world] === 'core') {
+      const kindName = label('kind', ld.objective, ld.objective);
+      const home = extracted && A.rack.some((r) => r.core && r.siteKind === ld.objective);
+      if (home) fact('core_home', 'good', 'drill', 0, { kind: kindName });
+      else fact('core_missed', 'bad', ld.drill.has ? 'fuel' : 'drill', 1, { kind: kindName }, { why: ld.drill.has ? 'core_left' : 'core_nodrill' });
+    }
+
+    // Lander systems (the engineer's)
+    const faultS = st.faultS || {};
+    const openS = (faultS.panels || 0) + (faultS.charger || 0);
+    if (S.faultTotal > 0 && openS > 20) {
+      const what = ['panels', 'charger'].filter((k) => (faultS[k] || 0) > 5).map((k) => label('fault', k, STRINGS['team.surface.fault.' + k])).join(', ');
+      fact('faults_open', 'bad', faultS.panels >= (faultS.charger || 0) ? 'solar' : 'battery', openS, { s: R0(openS), what });
+    } else if (S.faultTotal > 0 && (st.faultsFixed || 0) >= S.faultTotal && S.over) {
+      fact('faults_fixed', 'good', 'battery', 0, { n: S.faultTotal });
+    }
+
     const scienceMax = sites.reduce((sum, s) => sum + (s.fits ? s.value * s.valueBonus + s.value * ld.drill.coreValue : 0), 0);
     const scienceAll = sites.reduce((sum, s) => sum + s.value * s.valueBonus + s.value * 0.9, 0);
     const leftKg = S.entities.filter((e) => e.kind === 'sample').reduce((sum, e) => sum + e.massKg, 0);
@@ -2371,7 +2680,7 @@
       outcome: out, over: S.over, extracted, won, result, seed: S.seed, world: S.world, hazards: S.hazardsMode, difficulty: S.difficulty,
       t: S.t, T: S.T,
       // The mission's surface objectives, for the progress tracker (0..1 overall).
-      progress, objectives: objectives.map((o) => ({ id: o.id, text: o.text, key: o.key, frac: o.frac, done: o.done, weight: o.weight, n: o.n, of: o.of, kind: o.kind })),
+      progress, objectives: objectives.map((o) => ({ id: o.id, text: o.text, key: o.key, frac: o.frac, done: o.done, weight: o.weight, n: o.n, of: o.of, kind: o.kind, job: o.job || null })),
       crew: { total: players.length, aboard, lost, downs: 0, revives: 0, deaths: 0, respawns: 0, returns: st.returns, returnsBy: Object.assign({}, st.returnsBy) },
       science: { sitesTotal: sites.length, sitesDone, gbitScanned: st.gbitScanned, gbitSent: st.gbitSent, gbitLost: unsentGbit, gbitOverwritten: st.gbitOverwritten, valueSent: st.valueSent, valueUnsent: unsentValue, value: scienceValue, valueMax: scienceMax, valueAll: scienceAll, objective: ld.objective, objectiveMet, objectiveScanned, objectiveSites: objectiveSites.length, blockedKinds },
       samples: { taken: st.samplesTaken, delivered: st.samplesDelivered, left: st.samplesLeft, returned: returned.length, jettisoned: A.jettisoned.length, massReturnedKg: massReturned, valueReturned, valueJettisoned: valueDropped },
@@ -2381,7 +2690,14 @@
       ascent: { liftKg: A.liftKg, loadedKg: A.loadedKg, massReturnedKg: massReturned, rack: A.rack.slice(), jettisoned: A.jettisoned.slice(), waitedS: st.waitS, boiledKg: st.boilKg },
       items: { o2: { used: st.o2Used, stockOutT: st.o2StockOut, canisters: st.canistersUsed }, drill: ld.drill.has },
       facts,
-      perPlayer: players.map((p) => ({ name: p.name, role: p.role, playerId: p.playerId, isBot: p.isBot, scans: p.tally.scans, carried: p.tally.carried, dropped: p.tally.dropped, returns: p.tally.returns })),
+      perPlayer: players.map((p) => {
+        const T0 = p.tally || {};
+        const n = (k) => Math.round(T0[k] || 0);
+        return { name: p.name, role: p.role, job: p.role, crewId: p.crewId || null, playerName: p.playerName || null, playerId: p.playerId, isBot: p.isBot, scans: n('scans'), carried: n('carried'), dropped: n('dropped'), returns: n('returns'), plants: n('plants'), aligns: n('aligns'), repairs: n('repairs'), patches: n('patches'), routes: n('routes'), calls: n('calls'), boosts: n('boosts'), overclocks: n('overclocks'), heldS: n('heldS') };
+      }),
+      jobs: !!S.jobs,
+      signature: SIGNATURE[S.world] || null,
+      faults: { total: S.faultTotal || 0, seen: st.faultsSeen || 0, fixed: st.faultsFixed || 0, open: (S.faults || []).length, panelsS: Math.round((st.faultS || {}).panels || 0), chargerS: Math.round((st.faultS || {}).charger || 0) },
       score: {
         science: scienceMax > 0 ? clamp(scienceValue / scienceMax, 0, 1) : 0,
         survival: crewFrac,
@@ -2392,7 +2708,7 @@
   }
 
   const api = {
-    TICK, WORLDS, TUNE, ROLES, DIFFICULTY, STRINGS, OBJECTIVE_WEIGHT,
+    TICK, WORLDS, TUNE, ROLES, DIFFICULTY, STRINGS, OBJECTIVE_WEIGHT, OBJECTIVE_JOB, TASK_JOB, CHOOSERS, SIGNATURE,
     // Kept empty so old callers that look these up find nothing to arm.
     WEAPONS: {}, ALIENS: {},
     create, step, stepMove, summary, statusFor, fixture, normalizeLoadout, ascentPlan,
@@ -2400,6 +2716,14 @@
     nextGoal(S, playerId) {
       const p = S && S.entities ? S.entities.find((e) => e.kind === 'astronaut' && e.playerId === String(playerId)) : null;
       return nextGoal(S, p);
+    },
+    // May this player do this task now (docs/TEAM-V3.md item 5)? task: scan, plant, align,
+    // uplink, repair, patch, call, route, choose.
+    canDo(S, playerId, task) {
+      const p = S && S.entities ? S.entities.find((e) => e.kind === 'astronaut' && e.playerId === String(playerId)) : null;
+      if (!p) return false;
+      if (S.jobs === undefined) return true;
+      return owns(S, buildViews(S), p, task);
     },
     // Throw a rack sample overboard now, whoever pressed the button (the room may
     // have no live astronaut to carry it). True if it was on the rack.

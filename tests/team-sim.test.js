@@ -120,7 +120,25 @@ const WINNERS = [
 ["venus","engineer","chem","ellipse|sar+irspec+uso",{"orbit":"ellipse","launcher":"medium","route":"capture","lifetime":"y2","schedule":"plan","ascent":"a150","rover":"none","structure":"light","panels":"p4","batteries":"b800","adcs":"magnet","computer":"single","propMargin":"m10","turrets":"t2","oxygen":"o1","instruments":["sar","irspec","uso"],"duty":"d60","processing":"compress","weapons":["laser"],"drill":"hand","antenna":"a2","radio":"r50","ground":"g1","coding":"robust","recorder":"rec64","drones":"dr0","medkits":"mk2"}],
 ["venus","engineer","map","circ250|sar+irspec",{"orbit":"circ250","launcher":"medium","route":"capture","lifetime":"y2","schedule":"plan","ascent":"a150","rover":"none","structure":"light","panels":"p4","batteries":"b800","adcs":"magnet","computer":"single","propMargin":"m10","turrets":"t2","oxygen":"o1","instruments":["sar","irspec"],"duty":"d90","processing":"smart","weapons":["laser"],"drill":"hand","antenna":"a2","radio":"r50","ground":"g1","coding":"fast","recorder":"rec64","drones":"dr0","medkits":"mk2"}],
 ["venus","engineer","map","ellipse|sar+irspec",{"orbit":"ellipse","launcher":"medium","route":"capture","lifetime":"y2","schedule":"plan","ascent":"a150","rover":"none","structure":"light","panels":"p4","batteries":"b800","adcs":"magnet","computer":"single","propMargin":"m10","turrets":"t2","oxygen":"o1","instruments":["sar","irspec"],"duty":"d60","processing":"compress","weapons":["laser"],"drill":"hand","antenna":"a2","radio":"r50","ground":"g1","coding":"robust","recorder":"rec64","drones":"dr0","medkits":"mk2"}],
-["venus","engineer","map","ellipse|sar+irspec+uso",{"orbit":"ellipse","launcher":"medium","route":"capture","lifetime":"y2","schedule":"plan","ascent":"a150","rover":"none","structure":"light","panels":"p4","batteries":"b800","adcs":"magnet","computer":"single","propMargin":"m10","turrets":"t2","oxygen":"o1","instruments":["sar","irspec","uso"],"duty":"d60","processing":"compress","weapons":["laser"],"drill":"hand","antenna":"a2","radio":"r50","ground":"g1","coding":"robust","recorder":"rec64","drones":"dr0","medkits":"mk2"}]
+["venus","engineer","map","ellipse|sar+irspec+uso",{"orbit":"ellipse","launcher":"medium","route":"capture","lifetime":"y2","schedule":"plan","ascent":"a150","rover":"none","structure":"light","panels":"p4","batteries":"b800","adcs":"magnet","computer":"single","propMargin":"m10","turrets":"t2","oxygen":"o1","instruments":["sar","irspec","uso"],"duty":"d60","processing":"compress","weapons":["laser"],"drill":"hand","antenna":"a2","radio":"r50","ground":"g1","coding":"robust","recorder":"rec64","drones":"dr0","medkits":"mk2"}],
+["cubesat","cadet","green","iss|cubeCam",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"wheels","computer":"dual","propMargin":"mnone","thermal":"standard","instruments":["cubeCam"],"duty":"d60","processing":"compress","antenna":"patch","radio":"xband","ground":"gu2","coding":"robust","recorder":"rec32"}],
+["cubesat","cadet","green","iss|cubeCam+cubeTir",{"orbit":"iss","launcher":"slot12","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"standard","instruments":["cubeCam","cubeTir"],"duty":"d60","processing":"compress","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","cadet","green","iss|cubeCam+cubeWide",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"standard","instruments":["cubeCam","cubeWide"],"duty":"d60","processing":"compress","antenna":"patch","radio":"xband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","cadet","thirst","iss|cubeCam+cubeTir+cubeWide",{"orbit":"iss","launcher":"slot12","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"standard","instruments":["cubeCam","cubeTir","cubeWide"],"duty":"d60","processing":"compress","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","cadet","thirst","sso525|cubeCam+cubeTir",{"orbit":"sso525","launcher":"slot12","route":"rideshare","lifetime":"y2","schedule":"plan","structure":"standard","panels":"body","batteries":"b40","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"standard","instruments":["cubeCam","cubeTir"],"duty":"d30","processing":"compress","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec32"}],
+["cubesat","cadet","thirst","sso525|cubeTir+cubeWide",{"orbit":"sso525","launcher":"slot6","route":"rideshare","lifetime":"y2","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"standard","instruments":["cubeTir","cubeWide"],"duty":"d60","processing":"raw","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec32"}],
+["cubesat","engineer","green","iss|cubeCam",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"body","batteries":"b20","adcs":"wheels","computer":"dual","propMargin":"mnone","thermal":"standard","instruments":["cubeCam"],"duty":"d60","processing":"raw","antenna":"whip","radio":"xband","ground":"gu2","coding":"robust","recorder":"rec32"}],
+["cubesat","engineer","green","iss|cubeCam+cubeTir",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeCam","cubeTir"],"duty":"d60","processing":"compress","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","engineer","green","iss|cubeCam+cubeWide",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"standard","instruments":["cubeCam","cubeWide"],"duty":"d60","processing":"compress","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","engineer","thirst","iss|cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"body","batteries":"b10","adcs":"wheels","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeHyper"],"duty":"d30","processing":"smart","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","engineer","thirst","iss|cubeCam+cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"m6","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeCam","cubeHyper"],"duty":"d60","processing":"compress","antenna":"whip","radio":"xband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","engineer","thirst","iss|cubeTir+cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"body","batteries":"b20","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeTir","cubeHyper"],"duty":"d30","processing":"smart","antenna":"whip","radio":"sband","ground":"gu2","coding":"fast","recorder":"rec8"}],
+["cubesat","director","green","iss|cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeHyper"],"duty":"d60","processing":"smart","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","director","green","iss|cubeWide+cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeWide","cubeHyper"],"duty":"d60","processing":"smart","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","director","green","sso525|cubeCam+cubeTir",{"orbit":"sso525","launcher":"slot6","route":"rideshare","lifetime":"y2","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeCam","cubeTir"],"duty":"d60","processing":"compress","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","director","thirst","iss|cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeHyper"],"duty":"d60","processing":"smart","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","director","thirst","iss|cubeWide+cubeHyper",{"orbit":"iss","launcher":"slot6","route":"rideshare","lifetime":"y1","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b10","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeWide","cubeHyper"],"duty":"d60","processing":"smart","antenna":"whip","radio":"sband","ground":"gu2","coding":"robust","recorder":"rec8"}],
+["cubesat","director","thirst","sso525|cubeCam+cubeTir",{"orbit":"sso525","launcher":"slot6","route":"rideshare","lifetime":"y2","schedule":"plan","structure":"standard","panels":"wings2","batteries":"b20","adcs":"magnet","computer":"single","propMargin":"mnone","thermal":"blanket","instruments":["cubeCam","cubeTir"],"duty":"d60","processing":"smart","antenna":"whip","radio":"sband","ground":"gu1","coding":"robust","recorder":"rec8"}]
 ];
 
 const asDesign = (w) => ({ v: 1, scenario: w[0], difficulty: w[1], requirement: w[2], picks: w[4] });
@@ -395,7 +413,8 @@ test('chain, score and obituary run through surface causes', () => {
   const chain = sim.chain(d, 3, ss);
   assert.ok(chain.some((s) => s.kind === 'surface' && /Dish overrun/.test(s.text)));
   const scored = sim.score(d, f, {}, ss);
-  assert.ok(scored.survival < 200, 'lost crew hurts survival');
+  assert.strictEqual(scored.outcome.id, 'lost', 'a lost crew is a lost mission');
+  assert.ok(scored.total <= 299, 'a lost crew can never score like a success');
   const ob = sim.obituary(d, f, ss);
   assert.ok(ob && ob.crew && ob.epitaph);
   assert.ok(/^https?:/.test(ob.analog.source));
@@ -413,13 +432,15 @@ test('obituary names a real mission with a source for every cause', () => {
   assert.equal(sim.obituary(d, { result: { cause: null, alive: true, lifeDays: 400 } }), null);
 });
 
-test('score adds to four axes out of 1000 with medals', () => {
+test('score adds four traceable axes and the outcome rule, out of 1000, with medals', () => {
   for (const w of WINNERS.slice(0, 6)) {
     const d = asDesign(w);
     const f = sim.fly(d, 11, allFixed(d, 11));
     const s = sim.score(d, f, { requestsSent: 4, requestsAnswered: 3, agendas: sim.agendas(11) });
-    assert.equal(s.total, s.science + s.efficiency + s.survival + s.teamwork);
-    assert.ok(s.total <= 1000 && s.science <= 400 && s.efficiency <= 200 && s.survival <= 200 && s.teamwork <= 200);
+    assert.equal(s.total, s.requirements + s.science + s.efficiency + s.teamwork + s.outcome.adjust);
+    assert.ok(s.total <= 1000 && s.requirements <= 300 && s.science <= 300 && s.efficiency <= 200 && s.teamwork <= 200);
+    for (const [id, ax] of Object.entries(s.axes)) assert.equal(ax.value, ax.items.reduce((n, x) => n + x.points, 0), id + ' items add up');
+    assert.ok(s.total >= s.outcome.band[0] && s.total <= s.outcome.band[1]);
     assert.ok(['gold', 'silver', 'bronze', 'none'].includes(s.medal));
   }
 });
@@ -464,7 +485,7 @@ test('every string has an Arabic translation', () => {
 
 // ---------- The build, one component per step (TEAM-V2) ----------
 test('build steps: fixed order, at most three choices, Cadet skips the advanced ones', () => {
-  const ORDER = ['orbit', 'power', 'batteries', 'instruments', 'radio', 'recorder', 'computer', 'lifetime', 'landing', 'rocket'];
+  const ORDER = ['orbit', 'route', 'power', 'batteries', 'thermal', 'instruments', 'radio', 'ground', 'recorder', 'computer', 'lifetime', 'landing', 'rocket'];
   for (const s of sim.scenarios()) {
     for (const df of ['cadet', 'engineer', 'director']) {
       const steps = sim.buildSteps(s.id, df);
@@ -548,4 +569,180 @@ test('requirement fit follows the instruments, and changing it preserves the des
   assert.equal(r.requirement, 'sites');
   assert.deepEqual(r.picks, d.picks);
   assert.ok(sim.setRequirement(d, 'nope').error);
+});
+
+// ---------- v3 (docs/TEAM-V3.md "As built (v3: build)") ----------
+const DIFFS = ['cadet', 'engineer', 'director'];
+
+test('v3 CubeSat: a training flight in low orbit with CubeSat-scale parts, a rideshare ride and GEO locked', () => {
+  const s = sim.scenarios().find((x) => x.id === 'cubesat');
+  assert.ok(s && s.training && !s.landing && s.cubesat);
+  for (const df of DIFFS) {
+    const d = sim.newDesign('cubesat', df, 'green');
+    const res = sim.resources(d);
+    assert.ok(res.mass.value < 24 && res.budget.value < 10, `${df}: CubeSat scale (${res.mass.value} kg, $${res.budget.value}M)`);
+    const steps = sim.buildSteps('cubesat', df);
+    const rocket = steps.find((x) => x.id === 'rocket');
+    assert.strictEqual(rocket.title, 'Bus and ride');
+    assert.deepStrictEqual(rocket.options.map((o) => o.id), ['slot6', 'slot12', 'dedicated']);
+    const orbit = sim.stepCards(d, 'orbit');
+    assert.ok(orbit.find((c) => c.id === 'geo').locked, 'a rideshare CubeSat cannot reach GEO');
+    for (const c of sim.stepCards(d, 'instruments')) assert.ok(c.nums.massKg <= 2, `${c.id} is CubeSat-sized`);
+    assert.ok(!sim.crisesFor(d, 5).some((c) => c.type === 'fuelLeak'), 'no fuel to leak');
+  }
+  // No engine: an ISS-orbit CubeSat flown too long falls back into the air.
+  let d = sim.newDesign('cubesat', 'engineer', 'green');
+  d = sim.set(d, 'planner', 'orbit', 'iss');
+  d = sim.set(d, 'planner', 'lifetime', 'y2');
+  assert.ok(!sim.checks(d).find((c) => c.id === 'life').ok);
+  assert.strictEqual(sim.fly(d, 7).result.cause, 'drag');
+  // The 12U slot lifts what the 6U slot cannot.
+  let big = sim.set(sim.newDesign('cubesat', 'engineer', 'thirst'), 'scientist', 'instruments', ['cubeCam', 'cubeTir', 'cubeHyper']);
+  big = sim.set(big, 'engineer', 'panels', 'wings4');
+  assert.ok(sim.stepCards(big, 'rocket').find((c) => c.id === 'slot12').flies);
+});
+
+test('v3 thermal control: a step on Engineer and above, with real consequences', () => {
+  for (const s of sim.scenarios()) {
+    assert.ok(!sim.buildSteps(s.id, 'cadet').some((x) => x.id === 'thermal'), `${s.id}: Cadet keeps the standard system`);
+    assert.ok(sim.buildSteps(s.id, 'engineer').some((x) => x.id === 'thermal' && x.role === 'engineer'), `${s.id}: Engineer chooses it`);
+  }
+  // Too weak on a cold world: the check fails, the flight says so and loses science.
+  const std = sim.newDesign('europa', 'engineer', 'shell');
+  const weak = sim.set(std, 'engineer', 'thermal', 'blanket');
+  assert.ok(!sim.checks(weak).find((c) => c.id === 'thermal').ok);
+  assert.ok(sim.checks(std).find((c) => c.id === 'thermal').ok, 'the standard system copes');
+  const f = sim.fly(weak, 11);
+  assert.ok(f.events.some((e) => e.kind === 'thermal'));
+  assert.ok(f.result.science <= sim.fly(std, 11).result.science);
+  assert.ok(sim.resources(weak).mass.value < sim.resources(std).mass.value, 'blankets are lighter');
+  // Near Earth blankets are enough; on Venus they overheat.
+  assert.ok(sim.checks(sim.set(sim.newDesign('nile', 'engineer'), 'engineer', 'thermal', 'blanket')).find((c) => c.id === 'thermal').ok);
+  assert.match(sim.checks(sim.set(sim.newDesign('venus', 'engineer'), 'engineer', 'thermal', 'blanket')).find((c) => c.id === 'thermal').text, /sunlight/);
+  // A design with no thermal pick flies exactly as the standard one.
+  const old = JSON.parse(JSON.stringify(std));
+  delete old.picks.thermal;
+  assert.deepStrictEqual(sim.fly(old, 3).result, sim.fly(std, 3).result);
+});
+
+test('v3 cards: cost on every part card at every difficulty; Engineer adds specs, Flight director the point-design detail', () => {
+  for (const s of sim.scenarios()) for (const df of DIFFS) {
+    const d = sim.newDesign(s.id, df, s.requirements[0].id);
+    const depth = sim.cml(df).depth;
+    for (const st of sim.buildSteps(s.id, df)) {
+      for (const c of sim.stepCards(d, st.id)) {
+        if (st.id !== 'orbit' && st.id !== 'route') assert.ok(c.nums.costM != null, `${s.id}/${df}/${st.id}/${c.id} has a cost`);
+        if (st.id === 'instruments') for (const k of ['massKg', 'powerW', 'dataGb', 'costM', 'sciPct']) assert.ok(c.nums[k] != null, `${s.id}/${c.id} ${k}`);
+        assert.strictEqual(!!c.specs, depth >= 2, `${df} specs`);
+        assert.strictEqual(!!c.detail, depth >= 3, `${df} detail`);
+        if (c.specs) for (const x of c.specs) assert.ok(x.label && x.value && !/[{}]/.test(x.value), `${st.id} ${x.id}`);
+        if (c.detail) for (const id of ['margin', 'trl', 'cost', 'verify']) assert.ok(c.detail.some((x) => x.id === id), `${st.id} detail ${id}`);
+        if (st.id === 'instruments' && c.specs) assert.ok(c.specs.some((x) => x.id === 'cost'), 'instrument cards show the cost');
+      }
+    }
+  }
+  assert.deepStrictEqual(DIFFS.map((df) => sim.cml(df).level), ['1–2', '3', '4']);
+});
+
+test('v3 segments and traceability: every step has a segment, and every mission requirement traces to build steps', () => {
+  const SEG = new Set(sim.segments().map((g) => g.id));
+  assert.deepStrictEqual([...SEG], ['launch', 'space', 'ground', 'user']);
+  for (const s of sim.scenarios()) {
+    const d = sim.newDesign(s.id, 'director', s.requirements[0].id);
+    const tr = sim.traceability(d);
+    for (const f of ['need', 'goal', 'concept', 'target']) assert.ok(tr[f] && tr[f].length > 5, `${s.id} ${f}`);
+    assert.strictEqual(tr.objectives.filter((o) => o.primary).length, 1);
+    for (const o of tr.objectives) assert.ok(o.measure && o.measure.length > 5, `${s.id} measure ${o.id}`);
+    const steps = sim.buildSteps(s.id, 'director');
+    for (const st of steps) assert.ok(SEG.has(st.segment), `${s.id}/${st.id} segment`);
+    for (const m of tr.missionReqs) {
+      assert.match(m.id, /^MR-\d+$/);
+      assert.ok(m.steps.some((id) => steps.some((st) => st.id === id)), `${s.id} ${m.id} has a step to fix it`);
+      assert.ok(!/[{}]/.test(m.text), m.text);
+    }
+    for (const q of sim.requirementStatus(d)) assert.ok(q.proof && !/[{}]/.test(q.proof) && q.fix, `${s.id} ${q.id} proof and fix`);
+    assert.strictEqual(tr.missionReqs.some((m) => m.key === 'land'), s.landing);
+  }
+  // The three signature missions add their own requirements.
+  const keys = (id) => sim.traceability(sim.newDesign(id, 'engineer')).missionReqs.map((m) => m.key);
+  assert.ok(keys('moon').includes('night'));
+  assert.ok(keys('mars').includes('arrive') && keys('mars').includes('dust'));
+  assert.ok(keys('cubesat').includes('box') && keys('cubesat').includes('databudget'));
+  assert.ok(sim.buildSteps('mars', 'engineer').some((x) => x.id === 'route'), 'Mars chooses how to arrive');
+  assert.ok(!sim.buildSteps('moon', 'engineer').some((x) => x.id === 'route'));
+});
+
+test('v3 signature crises: Moon, Mars and the CubeSat always meet their own problem', () => {
+  for (const [id, type] of [['moon', 'lunarEclipse'], ['mars', 'dustStorm'], ['cubesat', 'tumble']]) {
+    for (const seed of [1, 2, 3]) assert.ok(sim.crisesFor(sim.newDesign(id, 'cadet'), seed).some((c) => c.type === type), `${id} ${seed}`);
+  }
+  for (const id of ['nile', 'storms', 'venus', 'europa']) assert.ok(!sim.crisesFor(sim.newDesign(id, 'director'), 4).some((c) => ['lunarEclipse', 'dustStorm', 'tumble'].includes(c.type)));
+  const d = sim.newDesign('mars', 'engineer', 'ice');
+  const c = sim.crisesFor(d, 9).find((x) => x.type === 'dustStorm');
+  assert.ok(sim.fly(d, 9, { [c.id]: 'fixed' }).result.science >= sim.fly(d, 9, { [c.id]: 'missed' }).result.science);
+});
+
+test('v3 locks: choices that cannot serve the objective are locked with a reason and never suggested', () => {
+  const storms = sim.newDesign('storms', 'engineer', 'early');
+  assert.ok(sim.lockOf(storms, 'orbit', 'sso600'));
+  assert.equal(sim.lockOf({ ...storms, requirement: 'track' }, 'orbit', 'sso600'), null);
+  const venus = sim.applyStep(sim.newDesign('venus', 'engineer', 'chem'), 'radio', 'small');
+  assert.match(sim.lockOf(venus, 'instruments', 'uso').reason, /dish/);
+  const nileGeo = sim.set(sim.newDesign('nile', 'engineer', 'sharp'), 'planner', 'orbit', 'geo');
+  assert.ok(sim.lockOf(nileGeo, 'instruments', 'hires'));
+  for (const s of sim.scenarios()) for (const df of DIFFS) {
+    const d = sim.newDesign(s.id, df, s.requirements[0].id);
+    const b = sim.bestChange(d, 3);
+    if (b) assert.equal(sim.lockOf(d, b.step, b.option), null, `${s.id}/${df}`);
+  }
+});
+
+test('v3 score: every point is traceable, and a lost or failed mission never outscores a successful one', () => {
+  const seen = { full: [], partial: [], fail: [], lost: [] };
+  const r = rnd(42);
+  for (const s of sim.scenarios()) for (const df of DIFFS) {
+    const cat = sim.catalog(s.id, df);
+    for (let k = 0; k < 6; k++) {
+      let d = sim.newDesign(s.id, df, s.requirements[0].id);
+      for (const [role, groups] of Object.entries(cat.roles)) for (const g of groups) {
+        if (g.multi || r() < 0.5) continue;
+        const n = sim.set(d, role, g.key, g.options[Math.floor(r() * g.options.length)].id);
+        if (!n.error) d = n;
+      }
+      const seed = 100 + k;
+      const outcomes = Object.fromEntries(sim.crisesFor(d, seed).map((c) => [c.id, r() < 0.5 ? 'fixed' : 'missed']));
+      const f = sim.fly(d, seed, outcomes);
+      const sc = sim.score(d, f, { requestsSent: 2, requestsAnswered: 1 });
+      assert.equal(sc.total, sc.requirements + sc.science + sc.efficiency + sc.teamwork + sc.outcome.adjust);
+      for (const ax of Object.values(sc.axes)) for (const it of ax.items) assert.ok(it.label && Number.isInteger(it.points));
+      seen[sc.outcome.id].push(sc.total);
+    }
+  }
+  for (const w of WINNERS.slice(0, 40)) {
+    const d = asDesign(w);
+    const sc = sim.score(d, sim.fly(d, 11, allFixed(d, 11)));
+    seen[sc.outcome.id].push(sc.total);
+  }
+  const max = (a) => (a.length ? Math.max(...a) : -1);
+  const min = (a) => (a.length ? Math.min(...a) : 2000);
+  assert.ok(max(seen.lost) < min(seen.partial) && max(seen.lost) < min(seen.full), 'lost < success');
+  assert.ok(max(seen.fail) < min(seen.partial), 'failed < partial');
+  assert.ok(max(seen.partial) < min(seen.full), 'partial < full');
+  assert.ok(seen.lost.length && seen.full.length && seen.partial.length, JSON.stringify(Object.fromEntries(Object.entries(seen).map(([k, v]) => [k, v.length]))));
+});
+
+test('v3 AI crewmates: they pick sensible, flyable parts with a reason, and answer suggestions', () => {
+  for (const [id, mine] of [['mars', 'planner'], ['moon', 'scientist'], ['cubesat', 'comms'], ['europa', 'engineer']]) {
+    const d = sim.newDesign(id, 'engineer', sim.scenarios().find((x) => x.id === id).requirements[0].id);
+    const steps = sim.buildSteps(id, 'engineer').filter((st) => st.role !== mine).map((st) => st.id);
+    const plan = sim.crewPlan(d, steps);
+    if (steps.includes('rocket')) assert.ok(!sim.checks(plan.design).some((c) => c.hard && !c.ok), `${id}: the crew's ship can launch`);
+    for (const st of steps) assert.ok(plan.picks[st] && plan.picks[st].line.length > 8 && !/[{}]/.test(plan.picks[st].line), `${id}/${st} line`);
+  }
+  const d = sim.newDesign('storms', 'engineer', 'early');
+  const no = sim.crewReview(d, 'orbit', 'sso600');
+  assert.strictEqual(no.ok, false);
+  assert.match(no.line, /early warning/);
+  const yes = sim.crewReview(d, 'batteries', sim.stepCards(d, 'batteries').find((c) => !c.on).id);
+  assert.ok(typeof yes.ok === 'boolean' && yes.line.length > 5);
 });

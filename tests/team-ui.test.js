@@ -164,3 +164,17 @@ test('the debrief best change names a build step the players saw', () => {
     assert.deepStrictEqual(b.design, sim.applyStep(d, b.step, b.option));
   }
 });
+
+test('v3: the Mission definition sits in the success-criterion stage; solo owns only its job', () => {
+  const base = { mode: 'solo', scenarioId: 'mars', difficulty: 'engineer' };
+  const q = kit.progressOf({ ...base, phase: 'questions' }).pct;
+  const d = kit.progressOf({ ...base, phase: 'define' }).pct;
+  const b = kit.progressOf({ ...base, phase: 'design', buildStep: 0 }).pct;
+  assert.ok(q < d && d < b, 'questions < define < build');
+  assert.strictEqual(kit.canSteer({ ...base, phase: 'define' }), true);
+  const steps = sim.buildSteps('mars', 'engineer');
+  const v = { ...base, phase: 'design', soloJob: 'comms', me: { id: 'local', roles: ['planner', 'engineer', 'scientist', 'comms'] } };
+  assert.deepStrictEqual(steps.filter((st) => kit.ownsStep(v, st)).map((st) => st.role).filter((r, i, a) => a.indexOf(r) === i), ['comms']);
+  assert.ok(steps.every((st) => kit.ownsStep({ ...v, soloJob: null }, st)), 'no job picked: every step');
+  assert.ok(SMD.team.views.define && typeof SMD.team.views.define.mount === 'function');
+});

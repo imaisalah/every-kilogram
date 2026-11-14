@@ -494,6 +494,11 @@ test('a crew member who ignores the call home can strand the mission, and the su
   assert.strictEqual(sum.extracted, false);
   assert.ok(sum.facts.some((f) => f.id === 'end_stranded'));
   assert.ok(!sum.facts.some((f) => f.id === 'ascent_ok'), 'no liftoff claimed');
+  // Honest inputs for the score: a stranded crew brought nobody home, however many sat in the cabin.
+  assert.strictEqual(sum.survivors, 0);
+  assert.strictEqual(sum.crew.aboard, 0);
+  assert.strictEqual(sum.score.survival, 0);
+  assert.strictEqual(sum.samples.returned, 0);
   assert.ok(st.stats.boilKg > 5, 'waiting boiled off ascent margin');
 });
 
@@ -565,7 +570,9 @@ test('the progress tracker climbs to 100% on a good mission and statusFor carrie
   assert.strictEqual(drops, 0, 'progress never falls back noticeably');
   const sum = S.summary(st);
   assert.ok(sum.progress > 0.95, `ended at ${sum.progress}`);
-  assert.deepStrictEqual(sum.objectives.map((o) => o.id), ['scan', 'sample', 'dish', 'send', 'science', 'home']);
+  assert.deepStrictEqual(sum.objectives.map((o) => o.id), ['scan', 'sample', 'dish', 'send', 'science', 'systems', 'home']);
+  assert.ok(Math.abs(sum.objectives.reduce((n, o) => n + o.weight, 0) - 1) < 1e-9, 'weights add up to 1');
+  for (const o of sum.objectives) assert.strictEqual(o.job, S.OBJECTIVE_JOB[o.id], o.id);
   for (const o of sum.objectives) assert.ok(o.text && !/\{\w+\}/.test(o.text), o.text);
   const mid = S.create(S.fixture('good', 'mars'), 1, [{ id: 'h' }], {});
   for (let i = 0; i < 900; i++) S.step(mid, {}, S.TICK);
@@ -687,8 +694,9 @@ test('nothing hurts an idle crew in the first 25 seconds, on the real designs', 
 
 test('network snapshots carry the calm state: suits, autopilot, objectives and progress', () => {
   const Net = require('../js/team/surface-net.js');
-  const st = S.create(S.fixture('good', 'mars'), 5, [{ id: 'h' }], {});
+  const st = S.create(S.fixture('good', 'mars'), 5, [{ id: 'h', role: 'engineer', name: 'Mateo', crewId: 'mateo', playerName: 'Bea' }], {});
   for (let i = 0; i < 2600; i++) S.step(st, {}, S.TICK);
+  st.faults.push({ id: 'fq', kind: 'charger', x: st.map.lander.x - 4.6, z: st.map.lander.z, fixT: 0.5, since: st.t });
   const p = st.entities.find((e) => e.playerId === 'h');
   const far = st.entities.find((e) => e.kind === 'site');
   p.x = far.x;
@@ -717,4 +725,282 @@ test('network snapshots carry the calm state: suits, autopilot, objectives and p
   // The HUD's next-goal reader works on a decoded state too.
   const g = S.nextGoal(out, 'h');
   assert.ok(g && g.target && Number.isFinite(g.target.x));
+  // v3: the character, the person, the jobs rule and the lander faults travel too.
+  assert.strictEqual(me.crewId, 'mateo');
+  assert.strictEqual(me.playerName, 'Bea');
+  assert.strictEqual(me.name, 'Mateo');
+  assert.strictEqual(out.jobs, true);
+  assert.ok(out.faults.some((f) => f.kind === 'charger' && Math.abs(f.fixT - st.faults.find((x) => x.id === 'fq').fixT) < 0.02), JSON.stringify(out.faults));
+  me.returning = null;
+  me.restT = 0;
+  me.carrying = null;
+  me.o2 = 90;
+  me.energy = 90;
+  out.hazards = [];
+  assert.strictEqual(S.nextGoal(out, 'h').id, 'repair', 'the engineer is sent to the fault on a client too');
+});
+
+// ---------------------------------------------------------------- docs/TEAM-V3.md item 5: jobs
+// One person in a job; the other three are people standing at the lander (so their jobs are taken).
+function jobCrew(role, world) {
+  const st = S.create(S.fixture('good', world || 'mars'), 2, [{ id: 'h', role }], {});
+  const p = st.entities.find((e) => e.playerId === 'h');
+  pastIntro(st);
+  for (const e of st.entities) {
+    if (e.kind !== 'astronaut' || e === p) continue;
+    e.isBot = false;
+    e.bot = null;
+    e.x = st.map.lander.x;
+    e.z = st.map.lander.z;
+  }
+  return { st, p };
+}
+
+test('jobs: only the scientist scans, only Communications plants the dish', () => {
+  const scans = (role) => {
+    const { st, p } = jobCrew(role);
+    const site = st.entities.find((e) => e.kind === 'site' && e.fits);
+    p.x = site.x;
+    p.z = site.z;
+    for (let i = 0; i < 90; i++) S.step(st, { h: { use: true } }, S.TICK);
+    return { scanned: site.scanned, prompt: st.prompts.h };
+  };
+  assert.ok(scans('scientist').scanned > 0.1, 'the scientist scans');
+  assert.strictEqual(scans('scientist').prompt, 'scan');
+  for (const role of ['planner', 'engineer', 'comms']) {
+    const r = scans(role);
+    assert.strictEqual(r.scanned, 0, `${role} cannot scan`);
+    assert.ok(r.prompt !== 'scan' && r.prompt !== 'needs_instrument', `${role} gets no scan prompt (${r.prompt})`);
+  }
+  const plants = (role) => {
+    const { st, p } = jobCrew(role);
+    const dish = st.entities.find((e) => e.kind === 'dish');
+    p.x = dish.x + 1;
+    p.z = dish.z;
+    for (let i = 0; i < 200; i++) S.step(st, { h: { use: true } }, S.TICK);
+    return dish.planted;
+  };
+  assert.ok(plants('comms'), 'Communications plants the dish');
+  for (const role of ['planner', 'engineer', 'scientist']) assert.ok(!plants(role), `${role} cannot plant`);
+  // Carrying samples is everyone's.
+  const { st, p } = jobCrew('engineer');
+  p.x += 20;
+  st.entities.push({ id: 'sx', kind: 'sample', x: p.x + 1, z: p.z, r: 0.7, state: 'ground', siteKind: 'ice', siteId: 'site0', massKg: 10, value: 50, core: false, heldBy: null, objective: false, heading: 0, hp: 1, maxHp: 1 });
+  S.step(st, { h: { use: true } }, S.TICK);
+  assert.strictEqual(p.carrying, 'sx', 'the engineer picks up a sample');
+});
+
+test('jobs: with nobody in a job, anyone covers it; jobs:false is the old shared mission', () => {
+  const st = S.create(S.fixture('good', 'mars'), 2, [{ id: 'h', role: 'comms' }], { fillBots: false });
+  pastIntro(st);
+  const p = st.entities.find((e) => e.playerId === 'h');
+  const site = st.entities.find((e) => e.kind === 'site' && e.fits);
+  p.x = site.x;
+  p.z = site.z;
+  for (let i = 0; i < 60; i++) S.step(st, { h: { use: true } }, S.TICK);
+  assert.ok(site.scanned > 0, 'a lone comms astronaut may scan');
+  const old = S.create(S.fixture('good', 'mars'), 2, [{ id: 'h', role: 'comms' }], { jobs: false });
+  pastIntro(old);
+  const q = old.entities.find((e) => e.playerId === 'h');
+  const s2 = old.entities.find((e) => e.kind === 'site' && e.fits);
+  q.x = s2.x;
+  q.z = s2.z;
+  for (let i = 0; i < 60; i++) S.step(old, { h: { use: true } }, S.TICK);
+  assert.ok(s2.scanned > 0);
+  assert.strictEqual(old.faultTotal, 0);
+  assert.ok(!S.summary(run(S.fixture('good', 'moon'), 5, { jobs: false })).objectives.some((o) => o.id === 'systems'));
+});
+
+test('jobs: the engineer fixes lander faults; left alone they cost power and suit charging', () => {
+  const { st, p } = jobCrew('engineer');
+  st.faultPlan = [];
+  const L = st.map.lander;
+  st.faults.push({ id: 'fx', kind: 'panels', x: L.x + 4.8, z: L.z + 0.6, fixT: 0, since: st.t });
+  st.faults.push({ id: 'fy', kind: 'charger', x: L.x - 4.6, z: L.z - 0.8, fixT: 0, since: st.t });
+  const base0 = S.create(S.fixture('good', 'mars'), 2, 0, {});
+  pastIntro(base0);
+  S.step(st, {}, S.TICK);
+  S.step(base0, {}, S.TICK);
+  assert.ok(st.base.solarW < base0.base.solarW * 0.5, `dusty panels: ${st.base.solarW} vs ${base0.base.solarW}`);
+  p.energy = 20;
+  p.x = L.x - 4.6;
+  p.z = L.z - 0.8;
+  S.step(st, {}, S.TICK);
+  assert.ok(!st.base.chargerOn, 'a tripped charger does not charge');
+  assert.strictEqual(st.prompts.h, 'repair');
+  let n = 0;
+  while (st.faults.some((f) => f.id === 'fy') && n++ < 400) S.step(st, { h: { use: true } }, S.TICK);
+  assert.ok(n < 400 && n >= S.TUNE.repairS * 30 - 2, `fixed in ${n} ticks`);
+  assert.strictEqual(p.tally.repairs, 1);
+  // A scientist standing on it cannot fix it.
+  const sc = jobCrew('scientist');
+  sc.st.faultPlan = [];
+  sc.st.faults.push({ id: 'fz', kind: 'panels', x: sc.p.x, z: sc.p.z, fixT: 0, since: 0 });
+  for (let i = 0; i < 200; i++) S.step(sc.st, { h: { use: true } }, S.TICK);
+  assert.ok(sc.st.faults.length === 1 && sc.st.prompts.h !== 'repair');
+  // All-bot crews fix every fault that happens.
+  for (const world of WORLDS) {
+    const sum = S.summary(run(S.fixture('good', world), 710));
+    assert.ok(sum.faults.seen >= 1 && sum.faults.fixed === sum.faults.seen, `${world}: ${JSON.stringify(sum.faults)}`);
+  }
+});
+
+test('jobs: the next goal and the prompts are only about your own job', () => {
+  const allowed = {
+    scientist: ['scan', 'sample', 'home'],
+    comms: ['plant', 'align', 'hold', 'wait', 'sample', 'home'],
+    engineer: ['repair', 'patch', 'sample', 'systems'],
+    planner: ['call', 'route', 'sample', 'watch'],
+  };
+  const shared = ['over', 'return', 'returning', 'rest', 'shelter', 'deliver', 'resupply'];
+  const promptsOf = { scientist: ['scan', 'needs_instrument'], comms: ['plant', 'align'], engineer: ['repair'], planner: [] };
+  const jobPrompts = ['scan', 'needs_instrument', 'plant', 'align', 'repair'];
+  for (const role of Object.keys(allowed)) {
+    for (const world of ['moon', 'venus']) {
+      const st = S.create(S.fixture('mid', world), 31, [{ id: 'h', role }], {});
+      const me = st.entities.find((e) => e.playerId === 'h');
+      let guard = 0;
+      // The person wanders across the map holding Use, so they walk into every kind of ring.
+      while (!st.over && guard++ < 20000) {
+        const a = st.t * 0.21 + role.length;
+        S.step(st, { h: { moveX: Math.cos(a), moveY: Math.sin(a * 0.7), use: true } }, S.TICK);
+        const pr = st.prompts.h;
+        if (pr && jobPrompts.includes(pr)) assert.ok(promptsOf[role].includes(pr), `${role} got the ${pr} prompt`);
+        if (st.tick % 30) continue;
+        const g = S.nextGoal(st, 'h');
+        assert.ok(allowed[role].includes(g.id) || shared.includes(g.id), `${role} on ${world}: goal ${g.id}`);
+        assert.ok(g.target && Number.isFinite(g.target.x), `${role}: ${g.id} has a target`);
+      }
+      assert.ok(me.tally.scans === 0 || role === 'scientist', `${role} scanned`);
+      assert.ok(me.tally.plants === 0 || role === 'comms', `${role} planted`);
+      assert.ok(me.tally.repairs === 0 || role === 'engineer', `${role} repaired`);
+    }
+  }
+});
+
+test('jobs: the planner marks a site and the scientist goes there first', () => {
+  const st = S.create(S.fixture('good', 'mars'), 4, [{ id: 'h', role: 'planner' }], {});
+  pastIntro(st);
+  const p = st.entities.find((e) => e.playerId === 'h');
+  const sci = st.entities.find((e) => e.role === 'scientist');
+  const sites = st.entities.filter((e) => e.kind === 'site' && e.fits);
+  const target = sites.slice().sort((a, b) => Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(a.x - p.x, a.z - p.z))[0];
+  p.heading = Math.atan2(target.z - p.z, target.x - p.x);
+  S.step(st, { h: { ability: true } }, S.TICK);
+  S.step(st, { h: { ability: false } }, S.TICK);
+  assert.ok(st.route && st.route.siteId === target.id, 'the route is set');
+  assert.strictEqual(S.nextGoal(st, sci.playerId).target.id, target.id);
+  let n = 0;
+  while (!target.done && n++ < 3600) S.step(st, {}, S.TICK);
+  assert.ok(target.done, 'the marked site got scanned');
+  assert.strictEqual(st.entities.filter((e) => e.kind === 'site' && e.done).length, 1, 'and it was the first one');
+  assert.strictEqual(p.tally.routes, 1);
+});
+
+test('jobs: only the scientist and the planner choose what stays behind; bots choose quickly', () => {
+  const setup = (role) => {
+    const st = S.create(S.fixture('good', 'mars'), 8, [{ id: 'h', role }], {});
+    pastIntro(st);
+    st.stage = 'extraction';
+    st.extraction.called = true;
+    st.extraction.timer = 5;
+    st.ascent.rack.push({ id: 'x1', siteKind: 'ice', massKg: 200, value: 1, core: false }, { id: 'x2', siteKind: 'ice', massKg: 5, value: 50, core: false });
+    st.ascent.loadedKg = 205;
+    st.ascent.overKg = 205 - st.ascent.liftKg;
+    st.extraction.decided = true;
+    st.extraction.decision = 10;
+    return st;
+  };
+  const a = setup('comms');
+  S.step(a, { h: { jettison: 'x1' } }, S.TICK);
+  assert.ok(!a.ascent.jettisoned.some((r) => r.id === 'x1'), 'Communications does not choose');
+  assert.ok(!a.over, 'the door is still open');
+  assert.strictEqual(S.statusFor(a, 'h').rack, null, 'and its phone shows no chooser');
+  const b = setup('scientist');
+  assert.ok(S.statusFor(b, 'h').rack, 'the scientist has the rack on the phone');
+  S.step(b, { h: { jettison: 'x1' } }, S.TICK);
+  assert.ok(b.ascent.jettisoned.some((r) => r.id === 'x1' && r.reason === 'crew'), 'and chooses');
+  // An all-bot door decision takes a few seconds, not the full fifteen.
+  const st = S.create(S.fixture('good', 'mars'), 8, 0, {});
+  st.ascent.liftKg = 20;
+  st.loadout.ascent.liftKg = 20;
+  let opened = -1;
+  let guard = 0;
+  while (!st.over && guard++ < 20000) {
+    S.step(st, {}, S.TICK);
+    if (opened < 0 && st.events.some((e) => e.type === 'decisionOpen')) opened = st.t;
+  }
+  assert.ok(opened >= 0, 'the door decision opened');
+  assert.ok(st.t - opened <= S.TUNE.botDecideS + 0.5, `bots took ${st.t - opened} s`);
+  const fresh = S.create(S.fixture('good', 'mars'), 8, 0, {});
+  assert.strictEqual(S.canDo(fresh, fresh.entities.find((e) => e.role === 'comms').playerId, 'scan'), false);
+  assert.strictEqual(S.canDo(fresh, fresh.entities.find((e) => e.role === 'scientist').playerId, 'scan'), true);
+  assert.strictEqual(S.canDo(fresh, fresh.entities.find((e) => e.role === 'planner').playerId, 'choose'), true);
+});
+
+test("jobs: summaries carry each astronaut's job work, character and player", () => {
+  const st = run(S.fixture('good', 'moon'), 12, {}, [{ id: 'h', role: 'scientist', name: 'Priya', crewId: 'priya', playerName: 'Bea', bot: true }]);
+  const sum = S.summary(st);
+  const me = sum.perPlayer.find((x) => x.playerId === 'h');
+  assert.strictEqual(me.name, 'Priya');
+  assert.strictEqual(me.crewId, 'priya');
+  assert.strictEqual(me.playerName, 'Bea');
+  assert.strictEqual(me.job, 'scientist');
+  assert.ok(me.scans >= 3, JSON.stringify(me));
+  const comms = sum.perPlayer.find((x) => x.job === 'comms');
+  assert.ok(comms.plants === 1 && comms.heldS > 5, JSON.stringify(comms));
+  const eng = sum.perPlayer.find((x) => x.job === 'engineer');
+  assert.ok(eng.repairs >= 1, JSON.stringify(eng));
+  assert.ok(sum.perPlayer.filter((x) => x.job !== 'scientist').every((x) => x.scans === 0), 'only the scientist scanned');
+});
+
+// ---------------------------------------------------------------- docs/TEAM-V3.md item 19
+test('signature missions: the Moon asks for the permanently shadowed crater, Mars for a drilled core', () => {
+  const ids = (sum) => sum.objectives.map((o) => o.id);
+  const moon = S.summary(run(S.fixture('good', 'moon'), 41));
+  const mars = S.summary(run(S.fixture('good', 'mars'), 41));
+  assert.ok(ids(moon).includes('shadow') && !ids(moon).includes('core'), ids(moon).join());
+  assert.ok(ids(mars).includes('core') && !ids(mars).includes('shadow'), ids(mars).join());
+  for (const w of ['venus', 'europa']) assert.ok(!ids(S.summary(run(S.fixture('good', w), 41))).some((id) => id === 'shadow' || id === 'core'), w);
+  assert.strictEqual(moon.signature, 'shadow');
+  assert.strictEqual(mars.signature, 'core');
+  assert.ok(moon.objectives.find((o) => o.id === 'shadow').done && moon.facts.some((f) => f.id === 'shadow_done'));
+  assert.ok(mars.objectives.find((o) => o.id === 'core').done && mars.facts.some((f) => f.id === 'core_home'));
+  // Mars without a drill: no core, and the summary says the drill was missing.
+  const noDrill = S.fixture('good', 'mars');
+  noDrill.drill = null;
+  const nd = S.summary(run(noDrill, 41));
+  assert.ok(!nd.objectives.find((o) => o.id === 'core').done);
+  assert.ok(nd.facts.some((f) => f.id === 'core_missed' && f.whyKey === 'team.surface.why.core_nodrill'));
+  // The shadowed crater is cold for suits even in daylight.
+  const st = S.create(S.fixture('good', 'moon'), 41, [{ id: 'h', role: 'scientist' }], {});
+  pastIntro(st);
+  const p = st.entities.find((e) => e.playerId === 'h');
+  const sh = st.entities.find((e) => e.kind === 'site' && e.shadow);
+  assert.ok(sh && sh.objective, 'one objective site is in permanent shadow');
+  alone(st, p);
+  const drainAt = (x, z) => {
+    p.x = x;
+    p.z = z;
+    p.energy = 100;
+    for (let i = 0; i < 60; i++) S.step(st, {}, S.TICK);
+    return 100 - p.energy;
+  };
+  const far = st.entities.find((e) => e.kind === 'site' && !e.shadow && Math.hypot(e.x - sh.x, e.z - sh.z) > 20);
+  assert.ok(st.sun.up);
+  assert.ok(drainAt(sh.x, sh.z) > drainAt(far.x, far.z) * 1.5, 'colder in the crater');
+});
+
+test('every surface and results string has Arabic (view-surface, the sim summary, the v3 debrief lines)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.join(__dirname, '..');
+  for (const f of fs.readdirSync(path.join(root, 'js', 'i18n'))) if (f.endsWith('.js')) require(path.join(root, 'js', 'i18n', f));
+  for (const f of ['ar-surface.js', 'ar-sim.js', 'ar-guide.js', 'ar-review.js', 'ar-flight.js']) require(path.join(root, 'js', 'team', f));
+  const AR = globalThis.SMD.i18nDicts.ar;
+  const keys = new Set(Object.keys(S.STRINGS));
+  for (const m of fs.readFileSync(path.join(root, 'js', 'team', 'view-surface.js'), 'utf8').matchAll(/\bt\('(team\.surface\.[\w.]*\w)'/g)) keys.add(m[1]);
+  for (const m of fs.readFileSync(path.join(root, 'js', 'team', 'view-debrief.js'), 'utf8').matchAll(/\bt\('(team\.deb\.(?:did|points|rule|band|total|crew)[\w.]*|team\.score\.requirements)'/g)) keys.add(m[1]);
+  const missing = [...keys].filter((k) => !AR[k]);
+  assert.deepStrictEqual(missing, []);
 });

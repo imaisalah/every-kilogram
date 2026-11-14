@@ -742,3 +742,88 @@ test('no session leaves timers behind: the test process can exit', async () => {
   s.close();
   assert.strictEqual(s.status, 'closed');
 });
+
+// ---- v3: broker setting, retry messages, and the connection check's pure parts ----
+test('broker setting: parsed from text or object, persisted, cleared', () => {
+  const saved = globalThis.localStorage;
+  globalThis.localStorage = fakeStorage();
+  try {
+    assert.strictEqual(Net.broker(), null, 'public broker by default');
+    assert.deepStrictEqual(Net.parseBroker('my.server.example:9000/peer'), { host: 'my.server.example', port: 9000, path: '/peer/', secure: true, key: 'peerjs' });
+    assert.deepStrictEqual(Net.parseBroker('ws://192.168.1.5:9000'), { host: '192.168.1.5', port: 9000, path: '/', secure: false, key: 'peerjs' });
+    assert.deepStrictEqual(Net.parseBroker('https://x.example/?key=abc'), { host: 'x.example', port: 443, path: '/', secure: true, key: 'abc' });
+    assert.strictEqual(Net.parseBroker(''), null);
+    assert.strictEqual(Net.parseBroker('   '), null);
+    assert.strictEqual(Net.parseBroker({}), null);
+    const set = Net.setBroker('my.server.example:9000');
+    assert.strictEqual(set.host, 'my.server.example');
+    assert.strictEqual(localStorage.getItem('ek.team.broker'), 'wss://my.server.example:9000/');
+    assert.strictEqual(Net.broker().port, 9000);
+    assert.strictEqual(Net.brokerText(Net.broker()), 'wss://my.server.example:9000/');
+    Net.setBroker('');
+    assert.strictEqual(Net.broker(), null);
+    assert.strictEqual(localStorage.getItem('ek.team.broker'), null);
+    Net.configure({ broker: { host: 'h.example', port: 1234, secure: false } });
+    assert.deepStrictEqual(Net.broker(), { host: 'h.example', port: 1234, path: '/', secure: false, key: 'peerjs' });
+    Net.configure({ broker: null });
+    assert.strictEqual(Net.broker(), null);
+    assert.deepStrictEqual(Net.PUBLIC_BROKER, { host: '0.peerjs.com', port: 443, path: '/', secure: true, key: 'peerjs' });
+  } finally {
+    globalThis.localStorage = saved;
+  }
+});
+
+test('every failure code has a plain message with a next step', () => {
+  for (const code of ['no-room', 'broker-unreachable', 'broker-slow', 'broker-lost', 'ice-failed', 'ice-timeout', 'host-away', 'host-timeout', 'host-gone', 'host-closed', 'no-webrtc', 'room-taken']) {
+    assert.ok(Net.MESSAGES[code] && Net.MESSAGES[code].length > 20, code);
+  }
+  assert.match(Net.MESSAGES['no-room'], /localhost/);
+  assert.match(Net.MESSAGES['ice-failed'], /Wi-Fi/);
+  assert.match(Net.MESSAGES['broker-unreachable'], /play-team\.bat/);
+});
+
+test('connection check: origin kinds and the verdict are pure', () => {
+  const check = require('../js/team/netcheck.js');
+  const kind = (protocol, hostname) => check.classifyOrigin({ protocol, hostname }).kind;
+  assert.strictEqual(kind('file:', ''), 'file');
+  assert.strictEqual(kind('http:', 'localhost'), 'local');
+  assert.strictEqual(kind('http:', '127.0.0.1'), 'local');
+  assert.strictEqual(kind('http:', '[::1]'), 'local');
+  assert.strictEqual(kind('http:', '192.168.1.10'), 'lan');
+  assert.strictEqual(kind('http:', '10.0.0.7'), 'lan');
+  assert.strictEqual(kind('http:', '172.20.3.4'), 'lan');
+  assert.strictEqual(kind('http:', '172.32.3.4'), 'hosted', 'outside the 172.16/12 block');
+  assert.strictEqual(kind('https:', 'yourname.github.io'), 'hosted');
+  assert.strictEqual(kind('https:', 'every-kilogram.example'), 'hosted');
+
+  const ok = (id) => ({ id, status: 'ok' });
+  assert.strictEqual(check.verdict([ok('origin'), ok('broker'), ok('webrtc')]).verdict, 'good');
+  const local = check.verdict([{ id: 'origin', status: 'bad' }, ok('broker'), ok('webrtc')]);
+  assert.strictEqual(local.verdict, 'bad');
+  assert.match(local.summary, /online address/);
+  const broker = check.verdict([ok('origin'), { id: 'broker', status: 'bad' }, ok('webrtc')]);
+  assert.match(broker.summary, /connecting service/);
+  const rtc = check.verdict([ok('origin'), ok('broker'), { id: 'webrtc', status: 'bad' }]);
+  assert.match(rtc.summary, /direct connections/);
+  const lan = check.verdict([{ id: 'origin', status: 'warn' }, ok('broker'), ok('webrtc')]);
+  assert.strictEqual(lan.verdict, 'limited');
+  assert.strictEqual(lan.ok, true);
+});
+
+test('connection check without a browser: no WebRTC is reported, not thrown', async () => {
+  const check = require('../js/team/netcheck.js');
+  const rtc = await check.checkWebRTC();
+  assert.deepStrictEqual(rtc, { ok: false, code: 'no-webrtc', ms: 0 });
+});
+
+test('Arabic covers every connection-check string and the new net codes', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.resolve(__dirname, '../js/team/netcheck.js'), 'utf8');
+  const keys = new Set([...src.matchAll(/t\('(team\.netcheck\.[\w.-]+)'/g)].map((m) => m[1]));
+  assert.ok(keys.size > 30, `found ${keys.size} keys`);
+  globalThis.SMD = globalThis.SMD || {};
+  require('../js/team/ar-net.js');
+  const ar = globalThis.SMD.i18nDicts.ar;
+  for (const k of keys) assert.ok(ar[k], `Arabic for ${k}`);
+  for (const code of ['broker-slow', 'host-gone']) assert.ok(ar['team.net.msg.' + code], code);
+});

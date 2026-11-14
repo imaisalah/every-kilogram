@@ -137,3 +137,37 @@ Events: `scan scanDone sampleTaken samplePickup sampleDrop sampleDelivered picku
 **Summary** keeps every field the room, chain, score and obituary read: `crewTotal, survivors, scienceFrac, valueSent, gbitSent, setsLost, setsTotal, overrunWave (always null), cause (null | stranded | oxygen | data_left; never a combat cause), baseDark (false), samplesKg, samplesLeftKg, liftKg, o2LeftS, crewAlive (true), outcome, extracted, won, result, progress, objectives, crew {total, aboard, lost, returns, returnsBy, downs 0, revives 0, deaths 0}, science, samples, power, dangers, uplink, ascent, items {o2, drill}, facts [{id, kind, part, value, text, why, key, whyKey, params}], perPlayer [{name, role, playerId, isBot, scans, carried, dropped, returns}], score {science, survival, objectives, timeUsed}`.
 
 Network snapshots (`js/team/surface-net.js`) carry the same calm state, including `returning`, `restT`, the objectives and progress; the init carries the caves and the objective kind.
+
+## v3 (docs/TEAM-V3.md items 5, 6, 11, 12, 19)
+
+### Jobs
+`opts.jobs` (default `true`; `false` = the v2 shared mission). `TASK_JOB`: scan/choose → scientist (choose also planner), plant/align/uplink/boost → comms, repair/patch → engineer, call/route → planner. `owns(S, V, p, task)`: your job, or nobody who holds that job is still outside. Gated: site scans and the `needs_instrument` prompt, dish plant/align and the `plant`/`align` prompts, holding the uplink ring (only Communications counts as a holder; one holder now gives the full rate a pair used to), fault repair, the door jettison (inputs, phones' `ascentDrop`, the drop button). Not gated: picking up and carrying samples, canisters, resupply, shelter, boarding.
+
+Bots: only the comms bot plants/holds; only the scientist bot scans; the engineer bot repairs faults first (after shelter and delivery); others carry samples. `workDone` (used by the planner bot and the crew-at-the-door call) also waits for open faults. Door decision: `TUNE.decisionS` (15 s) when a person may choose, `TUNE.botDecideS` (3 s) otherwise.
+
+`nextGoal` with jobs: scientist `scan` (the planner's routed site first) → `sample` → `home`; comms `plant` → `align` (< 0.9) → `hold` → `wait` / `sample`; engineer `repair` → `patch` (a crewmate under 60 within 45 m) → `sample` → `systems`; planner `call` (work done or < 70 s left) → `route` (an unmarked site) → `sample` → `watch`. Shared goals first: over, return, returning, rest, shelter, deliver, resupply.
+
+### Lander faults (the engineer's)
+`S.faults [{ id, kind: 'panels'|'charger', x, z, fixT, since }]`, planned from the seed (`planFaults`, Cadet 1 / Engineer 2 / Flight director 3, between 20% and 68% of the lifetime, only during play; one per kind at a time). Spots: panels 4.8 m east of the lander, charger 4.6 m west. `panels`: solar × `TUNE.panelsFaultFactor` (0.35); `charger`: no suit charging. Fix: hold Use within `TUNE.repairR` (2.8 m) for `TUNE.repairS` (4 s). Kinds by world: Mars and Venus panels only; Moon and Europa charger and panels. Events `fault {kind}`, `faultFixed {kind, by}`; prompt `repair`; objective `systems` (counts only faults that happened once the mission is over); summary `faults { total, seen, fixed, open, panelsS, chargerS }`, facts `faults_open` / `faults_fixed`.
+
+### Planner route
+A tap of the ability (under 1.2 s) marks the unscanned site the planner faces (within 20°, else the one nearest the ping): `S.route { siteId, by, t }`, the ping sits on the site, `ping` carries `site`. The scientist's bot and goal take it first; it clears when scanned.
+
+### Signature objectives (item 19)
+`SIGNATURE = { moon: 'shadow', mars: 'core' }`. Moon: the objective site farthest from the lander gets `shadow: true` (label "Permanently shadowed crater"); within its radius + 3 m suits are cold (air ×1.25, +0.35 battery/s) day or night; objective `shadow`, facts `shadow_done` / `shadow_missed`. Mars: objective `core` (a drilled core of the objective kind on the rack; half while one lies on the ground), facts `core_home` / `core_missed` (why: `core_nodrill` or `core_left`). `summary.signature`.
+
+### Objectives
+`scan 0.22, sample 0.13, dish 0.10, send 0.18, science 0.14, systems 0.08, home 0.15, shadow 0.10, core 0.10`, normalised over the ones present. Each objective has `job` (`OBJECTIVE_JOB`, null = the crew).
+
+### Crew
+`players[]` take `crewId` and `playerName` (stored on the astronaut, sent in the network init, kept in `perPlayer`). `perPlayer` adds `job, crewId, playerName, plants, aligns, repairs, patches, routes, calls, boosts, overclocks, heldS`. `statusFor` adds `job, crewId, name`; `rack` only for those who may choose.
+
+### Honest summary (item 12)
+Stranded: `survivors 0`, `crew.aboard 0`, `crew.lost` = everyone, `score.survival 0`, nothing returned, `result 'stranded'`. `sim.score` then caps the mission at 299 ("Mission lost").
+
+### Network
+Words added (`panels charger systems route patch watch shadow core`), events `fault`, `faultFixed`, `ping.site`; init `jobs`, `faultTotal`, players `crewId`/`playerName`, sites `shadow`; slow section `faults` (kind, x, z, fixT). Decoded states carry `jobs`, `faults`, `faultTotal`.
+
+### Balance (v3, bots only, `node tools/surface-balance.cjs --seeds 12 --cf 8`, 2026-11-14)
+Good designs: 100% success on every world and difficulty, science home 65-73%. Mid: 100% on every world at Cadet and Engineer; Flight director Moon 92%, Europa 17% (83% partial). Poor: 0-25% success (partial otherwise), science 8-24%. Starter designs from `sim.surfaceLoadout`: 100% success everywhere. No stranded crews. One change on the mid design: objective instrument left home 0% success, weak radio 22%, short lifetime 56%, small recorder 88%, rare windows 91%, low ascent fuel 94%, the rest 100%.
+With one idle person (`--with-human --human-job <job>`, Engineer): planner or engineer idle, 100% success; scientist idle, 0% (nothing gets scanned); comms idle, 0-17% (no dish, no data home). Jobs matter: a person who does nothing leaves their job undone. `--no-jobs` runs the v2 shared mission.

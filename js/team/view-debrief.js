@@ -60,21 +60,111 @@
   const ltr = (s) => (SMD.dir && SMD.dir() === 'rtl' ? `⁦${s}⁩` : s);
 
   // ---------- Reading the sim's results ----------
-  const AXIS_MAX = { science: 400, efficiency: 200, survival: 200, teamwork: 200 };
+  // v3 (docs/TEAM-V3.md item 12): requirements met, science returned, efficiency, teamwork,
+  // each with the items its points came from; the old four-axis score still reads.
+  const AXIS_MAX = { requirements: 300, science: 300, efficiency: 200, teamwork: 200, survival: 200 };
   const AXES = [
+    { id: 'requirements', label: () => t('team.score.requirements', 'Requirements met'), color: 'var(--role-planner)' },
     { id: 'science', label: () => t('team.score.science', 'Science'), color: 'var(--role-scientist)' },
-    { id: 'efficiency', label: () => t('team.score.efficiency', 'Efficiency'), color: 'var(--role-planner)' },
+    { id: 'efficiency', label: () => t('team.score.efficiency', 'Efficiency'), color: 'var(--role-engineer)' },
     { id: 'survival', label: () => t('team.score.survival', 'Survival'), color: 'var(--role-engineer)' },
     { id: 'teamwork', label: () => t('team.score.teamwork', 'Teamwork'), color: 'var(--role-comms)' },
   ];
   function axesOf(score) {
     const s = score || {};
     const src = s.axes || s.parts || s.breakdown || s;
-    return AXES.map((a) => {
+    const v3 = !!(s.axes && typeof s.axes === 'object');
+    return AXES.filter((a) => (v3 ? src[a.id] != null : a.id !== 'requirements')).filter((a) => !(v3 && a.id === 'survival' && src.survival == null)).map((a) => {
       const raw = src[a.id] && typeof src[a.id] === 'object' ? src[a.id] : { value: src[a.id] };
       const value = Number(raw.value != null ? raw.value : raw.score != null ? raw.score : raw.points) || 0;
-      return { id: a.id, label: a.label(), color: a.color, value, max: Number(raw.max) || AXIS_MAX[a.id] || 250, note: raw.why || raw.note || '' };
+      const items = Array.isArray(raw.items) ? raw.items.filter((x) => x && typeof x === 'object') : [];
+      return { id: a.id, label: a.label(), color: a.color, value, max: Number(raw.max) || AXIS_MAX[a.id] || 250, note: raw.why || raw.note || '', items };
     });
+  }
+  // The outcome rule: a lost or failed mission can never outscore a successful one.
+  function outcomeOf(score) {
+    const o = score && score.outcome;
+    if (!o || typeof o !== 'object') return null;
+    return { id: o.id || '', title: o.title || '', adjust: Number(o.adjust) || 0, why: o.why || '', band: Array.isArray(o.band) ? o.band : null, earned: Number(o.earned) };
+  }
+  const signed = (n) => (n > 0 ? `+${fmt(n)}` : n < 0 ? `\u2212${fmt(Math.abs(n))}` : '0');
+  // Every point, where it came from: one block per axis, one line per item, then the outcome rule.
+  function pointsHtml(score) {
+    const axes = axesOf(score);
+    const oc = outcomeOf(score);
+    const blocks = axes
+      .map((a) => {
+        const items = a.items.length
+          ? `<ul class="tf-pts-items">${a.items
+              .map((it) => {
+                const pts = Number(it.points) || 0;
+                const mx = Number(it.max);
+                const state = it.met === true ? 'ok' : it.met === false ? 'no' : '';
+                return `<li data-st="${state}"><span class="tf-pts-mark" aria-hidden="true">${state === 'ok' ? '\u2713' : state === 'no' ? '\u2715' : '\u00b7'}</span><span class="tf-pts-label"><b>${esc(it.label || it.id || '')}</b>${it.why ? `<small>${esc(it.why)}</small>` : ''}</span><span class="tf-pts-num" dir="ltr">${esc(fmt(pts))}${Number.isFinite(mx) ? ` / ${esc(fmt(mx))}` : ''}</span></li>`;
+              })
+              .join('')}</ul>`
+          : a.note
+            ? `<p class="tf-pts-note">${esc(a.note)}</p>`
+            : '';
+        return `<section class="tf-pts-axis" style="--c:${a.color}"><header><h3>${esc(a.label)}</h3><b dir="ltr">${esc(fmt(Math.round(a.value)))} / ${esc(fmt(a.max))}</b></header>${a.items.length && a.note ? `<p class="tf-pts-note">${esc(a.note)}</p>` : ''}${items}</section>`;
+      })
+      .join('');
+    const rule = oc
+      ? `<section class="tf-pts-axis tf-pts-rule" data-adj="${oc.adjust < 0 ? 'down' : oc.adjust > 0 ? 'up' : '0'}"><header><h3>${esc(t('team.deb.rule', 'Outcome rule'))}${oc.title ? `: ${esc(oc.title)}` : ''}</h3><b dir="ltr">${esc(signed(Math.round(oc.adjust)))}</b></header>${oc.why ? `<p class="tf-pts-note">${esc(oc.why)}</p>` : ''}${oc.band ? `<p class="tf-pts-note">${esc(t('team.deb.band', 'This outcome scores between {a} and {b}.', { a: fmt(oc.band[0]), b: fmt(oc.band[1]) }))}</p>` : ''}</section>`
+      : '';
+    return `<div class="tf-pts">${blocks}${rule}<p class="tf-pts-total"><span>${esc(t('team.deb.total', 'Total'))}</span><b dir="ltr">${esc(fmt(Math.round(totalOf(score))))} / 1,000</b></p></div>`;
+  }
+
+  // ---------- The crew on the surface (docs/TEAM-V3.md items 5 and 6) ----------
+  // Each astronaut as the character picked in setup, and what their job did down there.
+  function crewFace(p, size) {
+    const C = team.crew;
+    if (!C) return '';
+    try {
+      const m = p.crewId ? C.byId(p.crewId, C.isCustom && C.isCustom(p.crewId) && p.playerName ? { name: p.playerName } : undefined) : C.byJob && C.byJob(p.job || p.role);
+      return m ? C.portrait(m, { size }) : '';
+    } catch (e) {
+      return '';
+    }
+  }
+  function jobDid(p, surface) {
+    const n = (k) => Number(p[k]) || 0;
+    const job = p.job || p.role;
+    const parts = [];
+    if (job === 'scientist') parts.push(n('scans') ? t('team.deb.did.scans', 'scanned {n} sites', { n: n('scans') }) : t('team.deb.did.noscans', 'scanned no sites'));
+    if (job === 'comms') {
+      parts.push(n('plants') ? t('team.deb.did.plant', 'planted the dish') : t('team.deb.did.noplant', 'never planted the dish'));
+      if (n('heldS')) parts.push(t('team.deb.did.held', 'ran the uplink for {s} s', { s: n('heldS') }));
+    }
+    if (job === 'engineer') {
+      const f = (surface && surface.faults) || {};
+      if (n('repairs') || f.seen) parts.push(t('team.deb.did.repairs', 'fixed {n} of {of} lander faults', { n: n('repairs'), of: Math.max(n('repairs'), Number(f.seen) || 0) }));
+      if (n('patches')) parts.push(t('team.deb.did.patches', 'patched {n} suits', { n: n('patches') }));
+      if (!parts.length) parts.push(t('team.deb.did.calm', 'kept the lander running'));
+    }
+    if (job === 'planner') {
+      if (n('routes')) parts.push(t('team.deb.did.routes', 'marked {n} sites for the scientist', { n: n('routes') }));
+      if (n('calls')) parts.push(t('team.deb.did.call', 'called everyone home'));
+      else if (surface && surface.result === 'stranded') parts.push(t('team.deb.did.nocall', 'did not call everyone home in time'));
+      if (!parts.length) parts.push(t('team.deb.did.watch', 'watched the clock'));
+    }
+    if (n('carried')) parts.push(t('team.deb.did.carried', 'samples carried: {n}', { n: n('carried') }));
+    if (n('returns')) parts.push(t('team.deb.did.returns', 'walks home on autopilot: {n}', { n: n('returns') }));
+    const line = parts.join(t('team.deb.did.sep', ', '));
+    return line ? line.charAt(0).toUpperCase() + line.slice(1) + t('team.deb.did.end', '.') : '';
+  }
+  function crewHtml(surface) {
+    const per = surface && Array.isArray(surface.perPlayer) ? surface.perPlayer : [];
+    if (!per.length) return '';
+    const order = ['planner', 'engineer', 'scientist', 'comms'];
+    const rows = per.slice().sort((a, b) => order.indexOf(a.job || a.role) - order.indexOf(b.job || b.role));
+    return `<section class="tf-crewdid"><h2>${esc(t('team.deb.crew', 'Your crew on the surface'))}</h2><ul>${rows
+      .map((p) => {
+        const job = p.job || p.role;
+        const who = p.playerName && !p.isBot ? `${p.name} \u00b7 ${p.playerName}` : p.name;
+        return `<li style="--c:${ROLE_COLOR[job] || '#fff'}">${crewFace(p, 52)}<div><p class="tf-crewdid-who"><b>${esc(who || roleName(job))}</b><span>${esc(roleName(job))}</span></p><p class="tf-crewdid-did">${esc(jobDid(p, surface))}</p></div></li>`;
+      })
+      .join('')}</ul></section>`;
   }
   const totalOf = (score) => {
     if (!score) return 0;
@@ -499,7 +589,7 @@
         <div class="tf-report-sil">${designSil(sim, ctx.state.design, { color: '#222' })}</div>
       </header>
       <section class="tf-report-score"><div class="tf-report-total">${esc(fmt(totalOf(d.score)))}<small>/1000</small></div>
-        <ul>${axes.map((a) => `<li><b>${esc(a.label)}</b> ${esc(fmt(a.value))}</li>`).join('')}</ul>
+        <ul>${axes.map((a) => `<li><b>${esc(a.label)}</b> ${esc(fmt(a.value))} / ${esc(fmt(a.max))}${a.items.length ? `<br><small>${a.items.map((it) => `${esc(it.label || it.id || '')} ${esc(fmt(Number(it.points) || 0))}`).join(' \u00b7 ')}</small>` : ''}</li>`).join('')}${outcomeOf(d.score) ? `<li><b>${esc(t('team.deb.rule', 'Outcome rule'))}</b> ${esc(signed(Math.round(outcomeOf(d.score).adjust)))} ${esc(outcomeOf(d.score).why || '')}</li>` : ''}</ul>
       </section>
       ${ob ? `<section><h2>${esc(t('team.report.outcome', 'What happened'))}</h2><p><b>${esc(ob.title)}.</b> ${esc(ob.cause)} ${ob.analog ? esc(t('team.report.same', 'Same way as {m} ({y}).', { m: ob.analog.mission, y: ob.analog.year })) : ''}</p></section>` : ''}
       <section><h2>${esc(t('team.report.chain', 'Cause and effect'))}</h2><ol>${chain}</ol></section>
@@ -856,7 +946,7 @@
       const result = d.result || {};
       const died = result.alive === false || (d.surface && (d.surface.crewAlive === false || d.surface.extracted === false));
       const chain = Array.isArray(d.chain) ? d.chain.slice(0, 9) : [];
-      const crewNames = (ctx.view.players || []).map((p) => p.name).filter(Boolean);
+      const crewNames = ((ctx.view && ctx.view.players) || []).filter((p) => p && !p.bot).map((p) => p.name).filter(Boolean);
       const teamName = crewNames.join(', ') || t('team.crew.default', 'The crew');
 
       // Keep the record once for this debrief.
@@ -968,7 +1058,8 @@
         const act = stack(`<h1 class="tf-act-title">${esc(t('team.deb.score', 'The score'))}</h1>
           <div class="tf-score-total"><span data-total>0</span><small>/1000</small></div>
           ${ghost !== null ? `<div class="tf-score-ghost" data-ghostline></div>` : ''}
-          <div class="tf-axes">${axes.map((a, i) => `<div class="tf-axis" style="--c:${a.color}"><div class="tf-axis-head"><span>${esc(a.label)}</span><span data-a="${i}">0</span></div><div class="tf-axis-bar"><i data-b="${i}"></i></div></div>`).join('')}</div>
+          <div class="tf-axes">${axes.map((a, i) => `<div class="tf-axis" style="--c:${a.color}"><div class="tf-axis-head"><span>${esc(a.label)}</span><span><span data-a="${i}">0</span><small class="tf-axis-max"> / ${esc(fmt(a.max))}</small></span></div><div class="tf-axis-bar"><i data-b="${i}"></i></div></div>`).join('')}</div>
+          ${outcomeOf(d.score) && outcomeOf(d.score).adjust ? `<p class="tf-score-rule">${esc(t('team.deb.rule', 'Outcome rule'))}${outcomeOf(d.score).title ? ` (${esc(outcomeOf(d.score).title)})` : ''}: <b dir="ltr">${esc(signed(Math.round(outcomeOf(d.score).adjust)))}</b>${outcomeOf(d.score).why ? `<span>${esc(outcomeOf(d.score).why)}</span>` : ''}</p>` : ''}
           <div class="tf-medals" data-medals></div>`);
         const dur = actFast || RM ? 50 : 1300;
         await new Promise((res) => {
@@ -1133,6 +1224,38 @@
         }
       }
 
+      // Where every point came from (docs/TEAM-V3.md item 12).
+      let ptsLayer = null;
+      function openPoints() {
+        if (ptsLayer || !d.score) return;
+        ptsLayer = document.createElement('div');
+        ptsLayer.className = 'tf-rev-layer tf-pts-layer';
+        ptsLayer.setAttribute('role', 'dialog');
+        ptsLayer.setAttribute('aria-modal', 'true');
+        ptsLayer.setAttribute('aria-label', t('team.deb.points', 'Where every point came from'));
+        ptsLayer.innerHTML = `<div class="tf-rev">
+          <header class="tf-rev-top"><h1>${esc(t('team.deb.points', 'Where every point came from'))}</h1><button class="tf-btn tf-ghost" data-close type="button">${esc(t('team.close', 'Close'))}</button></header>
+          ${pointsHtml(d.score)}
+          ${crewHtml(d.surface)}
+        </div>`;
+        root.appendChild(ptsLayer);
+        const close = () => {
+          if (!ptsLayer) return;
+          ptsLayer.remove();
+          ptsLayer = null;
+          document.removeEventListener('keydown', onKey, true);
+        };
+        const onKey = (e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            close();
+          }
+        };
+        document.addEventListener('keydown', onKey, true);
+        ptsLayer.querySelector('[data-close]').addEventListener('click', close);
+        ptsLayer.querySelector('[data-close]').focus({ preventScroll: true });
+      }
+
       let revLayer = null;
       function openReview(focusQuiz) {
         const rv = reviewData();
@@ -1283,7 +1406,9 @@
         const kiloCard = v && v.text ? `<div class="tf-verdict" data-kind="${esc(v.kind)}"><div class="tf-verdict-face">${G.portrait(v.mood, { size: 76 })}</div><p class="tf-verdict-text"><span class="tf-verdict-who">${esc(t('guide.name', 'KILO'))}</span>${esc(v.text)}</p></div>` : '';
         act.innerHTML = `${kiloCard}<div class="tf-board-grid">
           <div class="tf-board-score"><div class="tf-score-total tf-small"><span>${esc(fmt(total))}</span><small>/1000</small></div>
-            <div class="tf-axes tf-axes-mini">${axes.map((a) => `<div class="tf-axis" style="--c:${a.color}"><div class="tf-axis-head"><span>${esc(a.label)}</span><span>${esc(fmt(Math.round(a.value)))}</span></div><div class="tf-axis-bar"><i style="inline-size:${clamp(a.value / a.max, 0, 1) * 100}%"></i></div></div>`).join('')}</div></div>
+            <div class="tf-axes tf-axes-mini">${axes.map((a) => `<div class="tf-axis" style="--c:${a.color}"><div class="tf-axis-head"><span>${esc(a.label)}</span><span>${esc(fmt(Math.round(a.value)))}<small class="tf-axis-max"> / ${esc(fmt(a.max))}</small></span></div><div class="tf-axis-bar"><i style="inline-size:${clamp(a.value / a.max, 0, 1) * 100}%"></i></div></div>`).join('')}</div>
+            ${outcomeOf(d.score) && outcomeOf(d.score).adjust ? `<p class="tf-score-rule tf-small">${esc(t('team.deb.rule', 'Outcome rule'))}: <b dir="ltr">${esc(signed(Math.round(outcomeOf(d.score).adjust)))}</b></p>` : ''}
+            <button class="tf-btn tf-ghost tf-pts-open" data-points type="button">${esc(t('team.deb.points', 'Where every point came from'))}</button></div>
           <div class="tf-board-main">
             ${rival ? `<div class="tf-vs"><div class="tf-vs-col"><span class="tf-vs-name">${esc(rival.name || t('team.chal.rivals', 'Rivals'))}</span><span class="tf-vs-score">${esc(fmt(rival.score))}</span>${designSil(sim, rival.de, {})}</div><div class="tf-vs-mid">${total >= rival.score ? esc(t('team.chal.won', 'BEATEN!')) : esc(t('team.chal.lost', 'NOT YET'))}</div><div class="tf-vs-col"><span class="tf-vs-name">${esc(t('team.chal.you', 'Your team'))}</span><span class="tf-vs-score">${esc(fmt(total))}</span>${designSil(sim, s.design, {})}</div></div>` : ''}
             ${best ? `<div class="tf-best"><p class="tf-best-kick">${esc(t('team.deb.onechange', 'The one change that helps most'))}</p><h2 class="tf-best-text">${esc(bestText)}</h2>${gain ? `<p class="tf-best-gain" dir="ltr">${esc(deltaText(gain))}</p>` : ''}</div>` : ''}
@@ -1293,8 +1418,9 @@
               <button class="tf-btn tf-ghost" data-nextm type="button">${esc(t('team.deb.next', 'Next mission'))}</button>
             </div>
           </div>
-        </div>`;
+        </div>${crewHtml(d.surface)}`;
         stage.appendChild(act);
+        act.querySelector('[data-points]').addEventListener('click', () => openPoints());
         act.querySelector('[data-refly-best]').addEventListener('click', () => ctx.send(best && best.change ? { type: 'refly', change: best.change } : best && best.key ? { type: 'refly', change: { role: best.role, key: best.key, value: best.value } } : { type: 'refly' }));
         act.querySelector('[data-refly-any]').addEventListener('click', () => ctx.send({ type: 'refly' }));
         act.querySelector('[data-nextm]').addEventListener('click', () => ctx.send({ type: 'next' }));
@@ -1302,6 +1428,7 @@
         actions.hidden = false;
         actions.innerHTML = `
           ${R && reviewData() ? `<button class="tf-chip" data-a="review" type="button">${esc(t('team.rev.title', 'Mission review'))}</button><button class="tf-chip" data-a="quiz" type="button">${esc(t('team.rev.h.quiz', 'Check what you learned'))}</button>` : ''}
+          <button class="tf-chip" data-a="points" type="button">${esc(t('team.deb.points', 'Where every point came from'))}</button>
           <button class="tf-chip" data-a="report" type="button">${esc(t('team.deb.report', 'Mission report'))}</button>
           ${d.obituary ? `<button class="tf-chip" data-a="tomb" type="button">${esc(t('team.obit.share', 'Save the tombstone'))}</button>` : ''}
           <button class="tf-chip" data-a="chal" type="button">${esc(t('team.deb.challenge', 'Challenge friends'))}</button>
@@ -1313,6 +1440,7 @@
         on('review', () => openReview(false));
         on('quiz', () => openReview(true));
         on('report', () => printReport(ctx, d, name));
+        on('points', () => openPoints());
         on('tomb', () => tombCanvas && shareTomb(tombCanvas, obitText(d.obituary)));
         on('chal', async () => {
           const url = challengeEncode(ctx, d, teamName);
@@ -1354,6 +1482,7 @@
       return () => {
         dead = true;
         if (revLayer) revLayer.remove();
+        if (ptsLayer) ptsLayer.remove();
         kitOff();
         cancelAnimationFrame(raf);
         timers.forEach(clearTimeout);
